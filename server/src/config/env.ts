@@ -1,8 +1,8 @@
-import { z } from 'zod'
-import dotenv from 'dotenv'
+import { z } from 'zod';
+import dotenv from 'dotenv';
 
 // Load .env file before validation
-dotenv.config()
+dotenv.config();
 
 const envSchema = z.object({
   // Server
@@ -23,20 +23,20 @@ const envSchema = z.object({
 
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
-})
+});
 
 // Validate on import — crashes with clear error if invalid
-const parsed = envSchema.safeParse(process.env)
+const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌ Invalid environment variables:')
+  console.error('❌ Invalid environment variables:');
   parsed.error.issues.forEach((issue) => {
-    console.error(`   ${issue.path.join('.')}: ${issue.message}`)
-  })
-  process.exit(1)
+    console.error(`   ${issue.path.join('.')}: ${issue.message}`);
+  });
+  process.exit(1);
 }
 
-export const env = parsed.data
+export const env = parsed.data;
 
 // Export type so the rest of the app gets full type safety
-export type Env = typeof env
+export type Env = typeof env;
