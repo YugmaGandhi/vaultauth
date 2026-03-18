@@ -4,7 +4,9 @@ import dotenv from 'dotenv';
 // Load .env file before validation
 dotenv.config();
 
-const envSchema = z.object({
+// Export schema separately so tests can use it directly
+// without triggering the process.exit logic below
+export const envSchema = z.object({
   // Server
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -25,6 +27,10 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
 });
 
+export type Env = z.infer<typeof envSchema>;
+
+// This block only runs when the module is loaded by the real app
+// Tests import envSchema directly — they never trigger this
 // Validate on import — crashes with clear error if invalid
 const parsed = envSchema.safeParse(process.env);
 
@@ -37,6 +43,3 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
-
-// Export type so the rest of the app gets full type safety
-export type Env = typeof env;
