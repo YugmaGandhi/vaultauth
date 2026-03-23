@@ -19,6 +19,11 @@ const config: Config = {
   // Setup file that runs before every test file
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
 
+  // Load test env vars before any test runs
+  globalSetup: '<rootDir>/src/__tests__/global-setup.ts',
+
+  globalTeardown: '<rootDir>/src/__tests__/global-teardown.ts',
+  
   // Coverage settings
   collectCoverageFrom: [
     'src/**/*.ts',

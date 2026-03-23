@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyPluginCallback } from 'fastify';
 import { z } from 'zod';
 import { authService } from '../services/auth.service';
 import { isAppError } from '../utils/errors';
@@ -21,9 +21,13 @@ const registerSchema = z.object({
     .max(128, 'Password must be less than 128 characters'),
 });
 
-export function authRoutes(app: FastifyInstance) {
+const authRoutes: FastifyPluginCallback = (
+  app: FastifyInstance,
+  _options,
+  done
+) => {
   // ── POST /auth/register ─────────────────────────────────
-  app.post('/auth/register', async (request, reply) => {
+  app.post('/register', async (request, reply) => {
     // Step 1 — Validate request body
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -57,4 +61,9 @@ export function authRoutes(app: FastifyInstance) {
       throw err;
     }
   });
-}
+
+  // Tell Fastify this plugin has finished registering
+  done();
+};
+
+export { authRoutes };
