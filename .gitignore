@@ -30,3 +30,7 @@ coverage/
 # Keys (never commit these)
 *.pem
 *.key
+
+# Bruno — ignore environment secrets only
+bruno/environments/production.bru
+bruno/environments/staging.bru
