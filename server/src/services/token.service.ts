@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
 import crypto from 'crypto';
-import argon2 from 'argon2';
 import { env } from '../config/env';
 import { TokenUser } from '../utils/types';
 import { createLogger } from '../utils/logger';
@@ -78,25 +77,11 @@ export class TokenService {
 
   // ── Hash Refresh Token ────────────────────────────────
   // We store the HASH in DB, never the raw token
-  // Same principle as password hashing
-  async hashRefreshToken(token: string): Promise<string> {
-    return argon2.hash(token, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4,
-    });
-  }
-
-  // ── Verify Refresh Token ──────────────────────────────
-  async verifyRefreshToken(token: string, hash: string): Promise<boolean> {
-    if (!hash.startsWith('$argon2')) return false;
-
-    try {
-      return await argon2.verify(hash, token);
-    } catch {
-      return false;
-    }
+  // SHA-256 — deterministic, same input always same output
+  // Safe for tokens because tokens are already 64 random bytes
+  // Never use this for passwords — use Argon2id for passwords
+  hashRefreshToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   // ── Get Refresh Token Expiry Date ─────────────────────

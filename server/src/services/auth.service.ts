@@ -176,8 +176,7 @@ export class AuthService {
 
     const accessToken = await tokenService.generateAccessToken(tokenUser);
     const rawRefreshToken = tokenService.generateRefreshToken();
-    const refreshTokenHash =
-      await tokenService.hashRefreshToken(rawRefreshToken);
+    const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
 
     // Step 6 — Store refresh token
     await tokenRepository.create({
@@ -231,7 +230,7 @@ export class AuthService {
     // Find all active tokens for user and check which one matches
     // We can't query by raw token — we stored the hash
     // So we find by userId and verify each one
-    const tokenHash = await tokenService.hashRefreshToken(refreshToken);
+    const tokenHash = tokenService.hashRefreshToken(refreshToken);
     const storedToken = await tokenRepository.findByHash(tokenHash);
 
     if (storedToken) {
@@ -259,7 +258,7 @@ export class AuthService {
     log.info('Token refresh attempt');
 
     // Step 1 — Hash the incoming token and look it up
-    const tokenHash = await tokenService.hashRefreshToken(refreshToken);
+    const tokenHash = tokenService.hashRefreshToken(refreshToken);
     const storedToken = await tokenRepository.findByHash(tokenHash);
 
     if (!storedToken) {
@@ -299,7 +298,7 @@ export class AuthService {
     const newAccessToken = await tokenService.generateAccessToken(tokenUser);
     const newRawRefreshToken = tokenService.generateRefreshToken();
     const newRefreshTokenHash =
-      await tokenService.hashRefreshToken(newRawRefreshToken);
+      tokenService.hashRefreshToken(newRawRefreshToken);
 
     // Step 6 — Store new refresh token
     await tokenRepository.create({

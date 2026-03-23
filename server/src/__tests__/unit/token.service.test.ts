@@ -83,27 +83,31 @@ describe('TokenService', () => {
     });
   });
 
-  describe('hashRefreshToken() and verifyRefreshToken()', () => {
-    it('should hash and verify correctly', async () => {
+  describe('hashRefreshToken()', () => {
+    it('should return a hex string', () => {
       const token = tokenService.generateRefreshToken();
-      const hash = await tokenService.hashRefreshToken(token);
+      const hash = tokenService.hashRefreshToken(token);
 
-      expect(hash).toMatch(/^\$argon2id\$/);
-      expect(await tokenService.verifyRefreshToken(token, hash)).toBe(true);
+      expect(typeof hash).toBe('string');
+      expect(hash).toMatch(/^[a-f0-9]{64}$/); // SHA-256 = 64 hex chars
     });
 
-    it('should return false for wrong token', async () => {
+    it('should be deterministic — same input always same output', () => {
       const token = tokenService.generateRefreshToken();
-      const hash = await tokenService.hashRefreshToken(token);
+      const hash1 = tokenService.hashRefreshToken(token);
+      const hash2 = tokenService.hashRefreshToken(token);
 
-      expect(await tokenService.verifyRefreshToken('wrongtoken', hash)).toBe(
-        false
-      );
+      // Unlike Argon2id, SHA-256 produces the same hash every time
+      // This is what allows DB lookup by hash
+      expect(hash1).toBe(hash2);
     });
 
-    it('should return false for invalid hash', async () => {
-      expect(await tokenService.verifyRefreshToken('token', 'not-a-hash')).toBe(
-        false
+    it('should produce different hashes for different tokens', () => {
+      const token1 = tokenService.generateRefreshToken();
+      const token2 = tokenService.generateRefreshToken();
+
+      expect(tokenService.hashRefreshToken(token1)).not.toBe(
+        tokenService.hashRefreshToken(token2)
       );
     });
   });
