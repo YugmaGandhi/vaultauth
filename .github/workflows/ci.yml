@@ -51,9 +51,10 @@ jobs:
 
       - name: Run database migrations
         working-directory: server
+        timeout-minutes: 2
         env:
           DATABASE_URL: postgresql://vaultauth:password@localhost:5433/vaultauth_test
-        run: npm run db:migrate
+        run: npm run db:migrate:force
 
       - name: Type check
         working-directory: server
