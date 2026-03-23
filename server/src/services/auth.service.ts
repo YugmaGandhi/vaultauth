@@ -218,6 +218,133 @@ export class AuthService {
     };
   }
 
+  // ── Logout ───────────────────────────────────────────────
+  async logout(params: {
+    refreshToken: string;
+    userId: string;
+    ipAddress?: string;
+  }): Promise<void> {
+    const { refreshToken, userId, ipAddress } = params;
+
+    log.info({ userId }, 'Logout attempt');
+
+    // Find all active tokens for user and check which one matches
+    // We can't query by raw token — we stored the hash
+    // So we find by userId and verify each one
+    const tokenHash = await tokenService.hashRefreshToken(refreshToken);
+    const storedToken = await tokenRepository.findByHash(tokenHash);
+
+    if (storedToken) {
+      await tokenRepository.revoke(storedToken.id);
+    }
+
+    void auditRepository.create({
+      userId,
+      eventType: 'user_logout',
+      ipAddress,
+      metadata: {},
+    });
+
+    log.info({ userId }, 'Logout successful');
+  }
+
+  // ── Refresh Token ────────────────────────────────────────
+  async refreshTokens(params: {
+    refreshToken: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<Omit<LoginResult, 'user'>> {
+    const { refreshToken, ipAddress, userAgent } = params;
+
+    log.info('Token refresh attempt');
+
+    // Step 1 — Hash the incoming token and look it up
+    const tokenHash = await tokenService.hashRefreshToken(refreshToken);
+    const storedToken = await tokenRepository.findByHash(tokenHash);
+
+    if (!storedToken) {
+      log.warn('Refresh failed — token not found or already revoked');
+      throw new AuthError(
+        'TOKEN_REVOKED',
+        'This session has been revoked. Please log in again.'
+      );
+    }
+
+    // Step 2 — Check expiry
+    if (storedToken.expiresAt < new Date()) {
+      log.warn('Refresh failed — token expired');
+      throw new AuthError(
+        'TOKEN_EXPIRED',
+        'Your session has expired. Please log in again.'
+      );
+    }
+
+    // Step 3 — Get user
+    const user = await userRepository.findById(storedToken.userId);
+    if (!user) {
+      throw new AuthError('TOKEN_INVALID', 'Invalid authentication token');
+    }
+
+    // Step 4 — Revoke old token immediately (single use)
+    await tokenRepository.revoke(storedToken.id);
+
+    // Step 5 — Generate new token pair
+    const tokenUser: TokenUser = {
+      id: user.id,
+      email: user.email,
+      roles: ['user'],
+      permissions: ['read:profile', 'write:profile'],
+    };
+
+    const newAccessToken = await tokenService.generateAccessToken(tokenUser);
+    const newRawRefreshToken = tokenService.generateRefreshToken();
+    const newRefreshTokenHash =
+      await tokenService.hashRefreshToken(newRawRefreshToken);
+
+    // Step 6 — Store new refresh token
+    await tokenRepository.create({
+      userId: user.id,
+      tokenHash: newRefreshTokenHash,
+      deviceInfo: userAgent,
+      ipAddress,
+      expiresAt: tokenService.getRefreshTokenExpiry(),
+    });
+
+    void auditRepository.create({
+      userId: user.id,
+      eventType: 'token_refreshed',
+      ipAddress,
+      metadata: {},
+    });
+
+    log.info({ userId: user.id }, 'Token refresh successful');
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRawRefreshToken,
+      expiresIn: 900,
+    };
+  }
+
+  // ── Get Current User ─────────────────────────────────────
+  async getMe(userId: string): Promise<
+    SafeUser & {
+      roles: string[];
+      permissions: string[];
+    }
+  > {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AuthError('TOKEN_INVALID', 'Invalid authentication token');
+    }
+
+    return {
+      ...user,
+      roles: ['user'],
+      permissions: ['read:profile', 'write:profile'],
+    };
+  }
+
   // Helper — strips passwordHash from user object
   private toSafeUser(user: {
     id: string;

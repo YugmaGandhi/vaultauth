@@ -9,6 +9,7 @@ import {
   sendSuccess,
   sendValidationError,
 } from '../utils/response';
+import { authenticate } from '../middleware/authenticate';
 
 const log = createLogger('AuthRoutes');
 
@@ -99,6 +100,91 @@ const authRoutes: FastifyPluginCallback = (
         return sendError(reply, err.statusCode, err.code, err.message);
       }
       log.error({ err, reqId: request.id }, 'Unexpected error in login');
+      throw err;
+    }
+  });
+
+  // ── POST /logout ─────────────────────────────────────────
+  app.post(
+    '/logout',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const parsed = z
+        .object({
+          refreshToken: z.string().min(1, 'Refresh token is required'),
+        })
+        .safeParse(request.body);
+
+      if (!parsed.success) {
+        return sendValidationError(
+          reply,
+          parsed.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }))
+        );
+      }
+
+      try {
+        await authService.logout({
+          refreshToken: parsed.data.refreshToken,
+          userId: request.user!.id,
+          ipAddress: request.ip,
+        });
+
+        return sendSuccess(reply, { message: 'Logged out successfully' });
+      } catch (err) {
+        if (isAppError(err)) {
+          return sendError(reply, err.statusCode, err.code, err.message);
+        }
+        throw err;
+      }
+    }
+  );
+
+  // ── POST /refresh ─────────────────────────────────────────
+  app.post('/refresh', async (request, reply) => {
+    const parsed = z
+      .object({
+        refreshToken: z.string().min(1, 'Refresh token is required'),
+      })
+      .safeParse(request.body);
+
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      const result = await authService.refreshTokens({
+        refreshToken: parsed.data.refreshToken,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+
+      return sendSuccess(reply, result);
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      throw err;
+    }
+  });
+
+  // ── GET /me ───────────────────────────────────────────────
+  app.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
+    try {
+      const user = await authService.getMe(request.user!.id);
+      return sendSuccess(reply, { user });
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
       throw err;
     }
   });
