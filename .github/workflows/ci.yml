@@ -49,6 +49,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Run database migrations
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://vaultauth:password@localhost:5433/vaultauth_test
+        run: npm run db:migrate
+
       - name: Type check
         working-directory: server
         run: npm run typecheck
@@ -67,4 +73,9 @@ jobs:
           PORT: 3000
           HOST: 0.0.0.0
           LOG_LEVEL: error
+          JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_REFRESH_EXPIRY: 30d
+          JWT_ISSUER: vaultauth
         run: npm test
