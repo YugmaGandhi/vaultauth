@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { authService } from '../services/auth.service';
 import { isAppError } from '../utils/errors';
 import { createLogger } from '../utils/logger';
-import { sendCreated, sendError, sendValidationError } from '../utils/response';
+import {
+  sendCreated,
+  sendError,
+  sendSuccess,
+  sendValidationError,
+} from '../utils/response';
 
 const log = createLogger('AuthRoutes');
 
@@ -19,6 +24,11 @@ const registerSchema = z.object({
     .string()
     .min(8, 'Password must be at least 8 characters')
     .max(128, 'Password must be less than 128 characters'),
+});
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email format').toLowerCase().trim(),
+  password: z.string().min(1, 'Password is required'),
 });
 
 const authRoutes: FastifyPluginCallback = (
@@ -58,6 +68,37 @@ const authRoutes: FastifyPluginCallback = (
 
       // Unknown error — let global error handler deal with it
       log.error({ err, reqId: request.id }, 'Unexpected error in register');
+      throw err;
+    }
+  });
+
+  // ── POST /login ─────────────────────────────────────────
+  app.post('/login', async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      const result = await authService.login({
+        email: parsed.data.email,
+        password: parsed.data.password,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+
+      return sendSuccess(reply, result);
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      log.error({ err, reqId: request.id }, 'Unexpected error in login');
       throw err;
     }
   });
