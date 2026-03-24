@@ -9,6 +9,8 @@ const validEnv = {
   NODE_ENV: 'test' as const,
   JWT_PRIVATE_KEY: 'dummy-private-key-for-testing',
   JWT_PUBLIC_KEY: 'dummy-public-key-for-testing',
+  EMAIL_FROM: 'noreply@vaultauth.dev',
+  APP_BASE_URL: 'http://localhost:3000',
 };
 
 describe('Environment Configuration', () => {

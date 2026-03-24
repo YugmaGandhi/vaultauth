@@ -26,12 +26,23 @@ export const envSchema = z.object({
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
 
-  //JWT
+  // JWT
   JWT_PRIVATE_KEY: z.string().min(1, 'JWT_PRIVATE_KEY is required'),
   JWT_PUBLIC_KEY: z.string().min(1, 'JWT_PUBLIC_KEY is required'),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('30d'),
   JWT_ISSUER: z.string().default('vaultauth'),
+
+  // Email
+  EMAIL_PROVIDER: z.enum(['smtp', 'resend']).default('smtp'),
+  EMAIL_FROM: z.string().min(1, 'EMAIL_FROM is required'),
+  EMAIL_FROM_NAME: z.string().default('VaultAuth'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  APP_BASE_URL: z.string().min(1, 'APP_BASE_URL is required'),
 });
 
 export type Env = z.infer<typeof envSchema>;

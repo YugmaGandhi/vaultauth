@@ -6,6 +6,8 @@ import { SafeUser, TokenUser, toSafeUser } from '../utils/types';
 import { createLogger } from '../utils/logger';
 import { tokenService } from './token.service';
 import { tokenRepository } from '../repositories/token.repository';
+import { emailTokenRepository } from '../repositories/email-token.repository';
+import { emailService } from './email.service';
 
 const log = createLogger('AuthService');
 
@@ -60,7 +62,11 @@ export class AuthService {
       passwordHash,
     });
 
-    // Step 4 — Write audit log
+    // Setp 4 - Send verification email — fire and forget
+    // Don't block the response if email fails
+    void this.sendVerificationEmail(user.id, user.email);
+
+    // Step 5 — Write audit log
     // Fire and forget — don't await, don't block the response
     void auditRepository.create({
       userId: user.id,
@@ -217,7 +223,6 @@ export class AuthService {
     };
   }
 
-  // ── Logout ───────────────────────────────────────────────
   async logout(params: {
     refreshToken: string;
     userId: string;
@@ -247,7 +252,6 @@ export class AuthService {
     log.info({ userId }, 'Logout successful');
   }
 
-  // ── Refresh Token ────────────────────────────────────────
   async refreshTokens(params: {
     refreshToken: string;
     ipAddress?: string;
@@ -325,7 +329,6 @@ export class AuthService {
     };
   }
 
-  // ── Get Current User ─────────────────────────────────────
   async getMe(userId: string): Promise<
     SafeUser & {
       roles: string[];
@@ -342,6 +345,107 @@ export class AuthService {
       roles: ['user'],
       permissions: ['read:profile', 'write:profile'],
     };
+  }
+
+  async sendVerificationEmail(userId: string, email: string): Promise<void> {
+    const token = await emailTokenRepository.create(
+      userId,
+      'email_verification',
+      24 // expires in 24 hours
+    );
+
+    await emailService.sendVerificationEmail(email, token);
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const emailToken = await emailTokenRepository.findValid(
+      token,
+      'email_verification'
+    );
+
+    if (!emailToken) {
+      throw new AuthError(
+        'TOKEN_INVALID',
+        'This verification link is invalid or has already been used',
+        400
+      );
+    }
+
+    // Mark email as verified
+    await userRepository.markEmailVerified(emailToken.userId);
+
+    // Mark token as used
+    await emailTokenRepository.markUsed(emailToken.id);
+
+    void auditRepository.create({
+      userId: emailToken.userId,
+      eventType: 'email_verified',
+      metadata: {},
+    });
+
+    log.info({ userId: emailToken.userId }, 'Email verified successfully');
+  }
+
+  async forgotPassword(email: string, ipAddress?: string): Promise<void> {
+    log.info({ email }, 'Password reset requested');
+
+    // Always return success — never reveal if email exists
+    const user = await userRepository.findByEmail(email);
+    if (!user) {
+      // Still wait a moment to prevent timing attacks
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return;
+    }
+
+    const token = await emailTokenRepository.create(
+      user.id,
+      'password_reset',
+      1 // expires in 1 hour
+    );
+
+    await emailService.sendPasswordResetEmail(email, token);
+
+    void auditRepository.create({
+      userId: user.id,
+      eventType: 'password_reset_requested',
+      ipAddress,
+      metadata: { email },
+    });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const emailToken = await emailTokenRepository.findValid(
+      token,
+      'password_reset'
+    );
+
+    if (!emailToken) {
+      throw new AuthError(
+        'TOKEN_INVALID',
+        'This reset link is invalid or has already been used',
+        400
+      );
+    }
+
+    // Hash new password
+    const passwordHash = await passwordService.hash(newPassword);
+
+    // Update password
+    await userRepository.updatePassword(emailToken.userId, passwordHash);
+
+    // Mark token as used
+    await emailTokenRepository.markUsed(emailToken.id);
+
+    // Revoke ALL refresh tokens — force re-login everywhere
+    await tokenRepository.revokeAllForUser(emailToken.userId);
+
+    void auditRepository.create({
+      userId: emailToken.userId,
+      eventType: 'password_changed',
+      metadata: {},
+    });
+
+    log.info({ userId: emailToken.userId }, 'Password reset successfully');
   }
 }
 

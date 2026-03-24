@@ -37,7 +37,6 @@ const authRoutes: FastifyPluginCallback = (
   _options,
   done
 ) => {
-  // ── POST /auth/register ─────────────────────────────────
   app.post('/register', async (request, reply) => {
     // Step 1 — Validate request body
     const parsed = registerSchema.safeParse(request.body);
@@ -73,7 +72,6 @@ const authRoutes: FastifyPluginCallback = (
     }
   });
 
-  // ── POST /login ─────────────────────────────────────────
   app.post('/login', async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -104,7 +102,6 @@ const authRoutes: FastifyPluginCallback = (
     }
   });
 
-  // ── POST /logout ─────────────────────────────────────────
   app.post(
     '/logout',
     { preHandler: [authenticate] },
@@ -142,7 +139,6 @@ const authRoutes: FastifyPluginCallback = (
     }
   );
 
-  // ── POST /refresh ─────────────────────────────────────────
   app.post('/refresh', async (request, reply) => {
     const parsed = z
       .object({
@@ -176,7 +172,6 @@ const authRoutes: FastifyPluginCallback = (
     }
   });
 
-  // ── GET /me ───────────────────────────────────────────────
   app.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       const user = await authService.getMe(request.user!.id);
@@ -189,6 +184,97 @@ const authRoutes: FastifyPluginCallback = (
     }
   });
 
+  app.get('/verify-email', async (request, reply) => {
+    const parsed = z
+      .object({
+        token: z.string().min(1, 'Token is required'),
+      })
+      .safeParse(request.query);
+
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      await authService.verifyEmail(parsed.data.token);
+      return sendSuccess(reply, {
+        message: 'Email verified successfully. You can now log in.',
+      });
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      throw err;
+    }
+  });
+
+  app.post('/forgot-password', async (request, reply) => {
+    const parsed = z
+      .object({
+        email: z.string().email('Invalid email format').toLowerCase().trim(),
+      })
+      .safeParse(request.body);
+
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    // Always return 200 — never reveal if email exists
+    await authService.forgotPassword(parsed.data.email, request.ip);
+
+    return sendSuccess(reply, {
+      message: 'If that email is registered, a reset link has been sent.',
+    });
+  });
+
+  app.post('/reset-password', async (request, reply) => {
+    const parsed = z
+      .object({
+        token: z.string().min(1, 'Token is required'),
+        newPassword: z
+          .string()
+          .min(8, 'Password must be at least 8 characters')
+          .max(128, 'Password too long'),
+      })
+      .safeParse(request.body);
+
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      await authService.resetPassword(
+        parsed.data.token,
+        parsed.data.newPassword
+      );
+      return sendSuccess(reply, {
+        message: 'Password reset successfully. Please log in again.',
+      });
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      throw err;
+    }
+  });
   // Tell Fastify this plugin has finished registering
   done();
 };
