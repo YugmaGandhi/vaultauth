@@ -9,6 +9,7 @@ import { tokenRepository } from '../repositories/token.repository';
 import { emailTokenRepository } from '../repositories/email-token.repository';
 import { emailService } from './email.service';
 import { OAuthProfile } from '../config/oauth-providers';
+import { rbacService } from './rbac.service';
 
 const log = createLogger('AuthService');
 
@@ -62,6 +63,9 @@ export class AuthService {
       email: email.toLowerCase().trim(),
       passwordHash,
     });
+
+    // Assign default 'user' role
+    await rbacService.assignDefaultRole(user.id);
 
     // Setp 4 - Send verification email — fire and forget
     // Don't block the response if email fails
@@ -172,13 +176,15 @@ export class AuthService {
     }
 
     // Step 5 — Generate tokens
-    // Build token user — roles/permissions will come from DB in Week 5
-    // For now default to basic user role
+    const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
+      user.id
+    );
+
     const tokenUser: TokenUser = {
       id: user.id,
       email: user.email,
-      roles: ['user'],
-      permissions: ['read:profile', 'write:profile'],
+      roles,
+      permissions,
     };
 
     const accessToken = await tokenService.generateAccessToken(tokenUser);
@@ -293,11 +299,15 @@ export class AuthService {
     await tokenRepository.revoke(storedToken.id);
 
     // Step 5 — Generate new token pair
+    const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
+      user.id
+    );
+
     const tokenUser: TokenUser = {
       id: user.id,
       email: user.email,
-      roles: ['user'],
-      permissions: ['read:profile', 'write:profile'],
+      roles,
+      permissions,
     };
 
     const newAccessToken = await tokenService.generateAccessToken(tokenUser);
@@ -341,10 +351,13 @@ export class AuthService {
       throw new AuthError('TOKEN_INVALID', 'Invalid authentication token');
     }
 
+    const { roles, permissions } =
+      await rbacService.getUserRolesAndPermissions(userId);
+
     return {
       ...user,
-      roles: ['user'],
-      permissions: ['read:profile', 'write:profile'],
+      roles,
+      permissions,
     };
   }
 
@@ -494,11 +507,15 @@ export class AuthService {
     }
 
     // Step 4 — Generate VaultAuth tokens
+    const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
+      user.id
+    );
+
     const tokenUser: TokenUser = {
       id: user.id,
       email: user.email,
-      roles: ['user'],
-      permissions: ['read:profile', 'write:profile'],
+      roles,
+      permissions,
     };
 
     const accessToken = await tokenService.generateAccessToken(tokenUser);

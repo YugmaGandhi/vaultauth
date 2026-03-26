@@ -1,3 +1,4 @@
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/connection';
 import { auditLogs, auditEventTypeEnum } from '../db/schema';
 import { createLogger } from '../utils/logger';
@@ -31,6 +32,20 @@ export class AuditRepository {
       // Log the error but don't throw
       log.error({ err }, 'Failed to write audit log');
     }
+  }
+
+  async findAll(params: { page: number; limit: number; userId?: string }) {
+    const { page, limit, userId } = params;
+    const offset = (page - 1) * limit;
+
+    const query = db
+      .select()
+      .from(auditLogs)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return userId ? query.where(eq(auditLogs.userId, userId)) : query;
   }
 }
 

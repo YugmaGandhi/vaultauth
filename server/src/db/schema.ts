@@ -123,9 +123,7 @@ export const userRoles = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.userId, table.roleId] }),
-  })
+  (table) => [primaryKey({ columns: [table.userId, table.roleId] })]
 );
 
 // ── Role Permissions (junction) ─────────────────────────
@@ -139,9 +137,7 @@ export const rolePermissions = pgTable(
       .notNull()
       .references(() => permissions.id, { onDelete: 'cascade' }),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.roleId, table.permissionId] }),
-  })
+  (table) => [primaryKey({ columns: [table.roleId, table.permissionId] })]
 );
 
 // ── Audit Logs ──────────────────────────────────────────
