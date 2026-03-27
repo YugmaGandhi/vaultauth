@@ -11,6 +11,7 @@ import { oauthRoutes } from './routes/oauth.routes';
 import { buildErrorResponse } from './utils/response';
 import { rbacRoutes } from './routes/rbac.routes';
 import { adminRoutes } from './routes/admin.routes';
+import { pool } from './db/connection';
 
 export async function buildApp() {
   const app = Fastify({
@@ -66,13 +67,36 @@ export async function buildApp() {
   });
 
   // ── Routes ─────────────────────────────────────────────
-  // Health check — first real endpoint
   app.get('/health', async (_request, reply) => {
-    return reply.send({
-      status: 'ok',
+    // Check database
+    let dbStatus: 'ok' | 'degraded' = 'ok';
+    try {
+      const client = await pool.connect();
+      await client.query('SELECT 1');
+      client.release();
+    } catch {
+      dbStatus = 'degraded';
+    }
+
+    // Check Redis
+    let redisStatus: 'ok' | 'degraded' = 'ok';
+    try {
+      await redis.ping();
+    } catch {
+      redisStatus = 'degraded';
+    }
+
+    const allHealthy = dbStatus === 'ok' && redisStatus === 'ok';
+
+    return reply.status(allHealthy ? 200 : 503).send({
+      status: allHealthy ? 'ok' : 'degraded',
       version: '1.0.0',
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      dependencies: {
+        database: dbStatus,
+        redis: redisStatus,
+      },
     });
   });
 
