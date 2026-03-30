@@ -3,6 +3,7 @@ import { buildApp } from '../../app';
 import { db } from '../../db/connection';
 import { users } from '../../db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { seedSystemData } from '../../db/seed';
 
 describe('Auth Cycle — register → login → refresh → logout', () => {
   let app: FastifyInstance;
@@ -13,14 +14,14 @@ describe('Auth Cycle — register → login → refresh → logout', () => {
   });
 
   beforeEach(async () => {
-    // Wait for any fire-and-forget async operations to settle
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
     // TRUNCATE CASCADE handles all FK dependencies atomically
     // Much safer than manual delete ordering
     await db.execute(
-      sql`TRUNCATE TABLE audit_logs, refresh_tokens, email_tokens, user_roles, users RESTART IDENTITY CASCADE`
+      sql`TRUNCATE TABLE audit_logs, refresh_tokens, email_tokens, user_roles, role_permissions, roles, permissions, users RESTART IDENTITY CASCADE`
     );
+
+    // Re-seed system data after truncate
+    await seedSystemData();
   });
 
   afterAll(async () => {

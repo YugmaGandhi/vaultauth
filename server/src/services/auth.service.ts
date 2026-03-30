@@ -13,6 +13,12 @@ import { rbacService } from './rbac.service';
 
 const log = createLogger('AuthService');
 
+// TODO: Move audit logging to an async event queue (e.g. Redis Streams)
+// Currently we await audit writes directly in the request path (~2-5ms).
+// Production IDPs (Auth0, Okta) use event pipelines so audit logging
+// never blocks the response. When VaultAuth needs to handle high throughput,
+// publish audit events to a queue and consume them in a background worker.
+
 type RegisterParams = {
   email: string;
   password: string;
@@ -72,8 +78,7 @@ export class AuthService {
     void this.sendVerificationEmail(user.id, user.email);
 
     // Step 5 — Write audit log
-    // Fire and forget — don't await, don't block the response
-    void auditRepository.create({
+    await auditRepository.create({
       userId: user.id,
       eventType: 'user_registered',
       ipAddress,
@@ -100,7 +105,7 @@ export class AuthService {
     const user = await userRepository.findByEmail(email);
     if (!user) {
       log.warn({ email }, 'Login failed — user not found');
-      void auditRepository.create({
+      await auditRepository.create({
         eventType: 'login_failed',
         ipAddress,
         metadata: { email, reason: 'user_not_found' },
@@ -151,7 +156,7 @@ export class AuthService {
         lockUntil.setMinutes(lockUntil.getMinutes() + 15);
         await userRepository.lockAccount(user.id, lockUntil);
 
-        void auditRepository.create({
+        await auditRepository.create({
           userId: user.id,
           eventType: 'account_locked',
           ipAddress,
@@ -165,7 +170,7 @@ export class AuthService {
         );
       }
 
-      void auditRepository.create({
+      await auditRepository.create({
         userId: user.id,
         eventType: 'login_failed',
         ipAddress,
@@ -205,7 +210,7 @@ export class AuthService {
     await userRepository.updateLastLogin(user.id);
 
     // Step 8 — Audit log
-    void auditRepository.create({
+    await auditRepository.create({
       userId: user.id,
       eventType: 'user_login',
       ipAddress,
@@ -249,7 +254,7 @@ export class AuthService {
       await tokenRepository.revoke(storedToken.id);
     }
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId,
       eventType: 'user_logout',
       ipAddress,
@@ -324,7 +329,7 @@ export class AuthService {
       expiresAt: tokenService.getRefreshTokenExpiry(),
     });
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId: user.id,
       eventType: 'token_refreshed',
       ipAddress,
@@ -391,7 +396,7 @@ export class AuthService {
     // Mark token as used
     await emailTokenRepository.markUsed(emailToken.id);
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId: emailToken.userId,
       eventType: 'email_verified',
       metadata: {},
@@ -419,7 +424,7 @@ export class AuthService {
 
     await emailService.sendPasswordResetEmail(email, token);
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId: user.id,
       eventType: 'password_reset_requested',
       ipAddress,
@@ -453,7 +458,7 @@ export class AuthService {
     // Revoke ALL refresh tokens — force re-login everywhere
     await tokenRepository.revokeAllForUser(emailToken.userId);
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId: emailToken.userId,
       eventType: 'password_changed',
       metadata: {},
@@ -532,7 +537,7 @@ export class AuthService {
 
     await userRepository.updateLastLogin(user.id);
 
-    void auditRepository.create({
+    await auditRepository.create({
       userId: user.id,
       eventType: 'oauth_login',
       ipAddress,

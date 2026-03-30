@@ -3,6 +3,7 @@ import { buildApp } from '../../app';
 import { db } from '../../db/connection';
 import { users } from '../../db/schema';
 import { FastifyInstance } from 'fastify';
+import { seedSystemData } from '../../db/seed';
 
 describe('POST /auth/register', () => {
   let app: FastifyInstance;
@@ -16,12 +17,12 @@ describe('POST /auth/register', () => {
   // Clean up users table before each test
   // So tests don't affect each other
   beforeEach(async () => {
-    // Wait for any fire-and-forget async operations to settle
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
     await db.execute(
-      sql`TRUNCATE TABLE audit_logs, refresh_tokens, email_tokens, user_roles, users RESTART IDENTITY CASCADE`
+      sql`TRUNCATE TABLE audit_logs, refresh_tokens, email_tokens, user_roles, role_permissions, roles, permissions, users RESTART IDENTITY CASCADE`
     );
+
+    // Re-seed system data after truncate
+    await seedSystemData();
   });
 
   // Close app and DB connection after all tests
