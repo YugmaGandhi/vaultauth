@@ -38,6 +38,9 @@ cd server && npm run db:migrate
 npm run dev
 curl http://localhost:3000/health
 
+# System roles and permissions are seeded automatically on boot.
+# To re-seed manually: cd server && npm run db:seed
+
 ```
 
 ----------

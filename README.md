@@ -91,6 +91,8 @@ npm run dev
 
 Server runs at `http://localhost:3000`. Visit `http://localhost:3000/health` to confirm.
 
+> **Note:** On first boot, VaultAuth automatically seeds the default roles, permissions, and role-permission mappings. No manual seed step is required.
+
 ----------
 
 ## API Overview
@@ -125,6 +127,32 @@ Server runs at `http://localhost:3000`. Visit `http://localhost:3000/health` to 
 | POST | `/api/users/:id/roles` | Assign role |
 | DELETE | `/api/users/:id/roles/:roleId` | Remove role |
 | GET | `/api/admin/audit-logs` | Query audit logs |
+
+### Default Roles & Permissions
+
+VaultAuth ships with system roles and permissions that are seeded automatically on every boot. These are required for the application to function — do not delete them.
+
+**Roles:**
+
+| Role | Description |
+|------|-------------|
+| `user` | Assigned to every new user on registration |
+| `moderator` | Can view users and audit logs |
+| `admin` | Full system access |
+
+**Permissions:**
+
+| Permission | user | moderator | admin |
+|------------|:----:|:---------:|:-----:|
+| `read:profile` | ✓ | ✓ | ✓ |
+| `write:profile` | ✓ | ✓ | ✓ |
+| `read:users` | | ✓ | ✓ |
+| `write:users` | | | ✓ |
+| `read:roles` | | ✓ | ✓ |
+| `write:roles` | | | ✓ |
+| `read:audit-logs` | | ✓ | ✓ |
+
+You can assign additional roles to users via the API. Role-permission mappings can be customized after initial setup.
 
 ----------
 
@@ -298,6 +326,9 @@ cd server && npm run dev:make-admin user@example.com
 
 # Generate RSA keypair
 cd server && npm run gen:keys
+
+# Re-seed system roles and permissions (runs automatically on boot)
+cd server && npm run db:seed
 
 ```
 

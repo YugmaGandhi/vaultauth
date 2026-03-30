@@ -12,6 +12,7 @@ import { buildErrorResponse } from './utils/response';
 import { rbacRoutes } from './routes/rbac.routes';
 import { adminRoutes } from './routes/admin.routes';
 import { pool } from './db/connection';
+import { seedSystemData } from './db/seed';
 
 export async function buildApp() {
   const app = Fastify({
@@ -70,6 +71,10 @@ export async function buildApp() {
       return response;
     },
   });
+
+  // ── Seed system data ───────────────────────────────────
+  // Idempotent — ensures roles + permissions exist on every boot
+  await seedSystemData();
 
   // ── Routes ─────────────────────────────────────────────
   app.get('/health', async (_request, reply) => {
