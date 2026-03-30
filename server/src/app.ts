@@ -26,6 +26,11 @@ export async function buildApp() {
   app.addHook('onRequest', onRequestLogger);
   app.addHook('onResponse', onResponseLogger);
 
+  app.addHook('onSend', (_request, reply, _payload, done) => {
+    void reply.header('x-request-id', _request.id);
+    done();
+  });
+
   // ── Plugins ────────────────────────────────────────────
   // CORS — controls which domains can call your API
   await app.register(cors, {
