@@ -76,6 +76,26 @@ describe('App — health, 404, error handler', () => {
     });
   });
 
+  // ── Metrics endpoint ────────────────────────────────────
+  describe('GET /metrics', () => {
+    it('should return Prometheus metrics', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/metrics',
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('text/plain');
+      // Should contain default Node.js metrics
+      expect(res.body).toContain('vaultauth_nodejs');
+      // Should contain our custom HTTP metrics
+      expect(res.body).toContain('vaultauth_http_request_duration_seconds');
+      expect(res.body).toContain('vaultauth_http_requests_total');
+      // Should contain auth event metrics
+      expect(res.body).toContain('vaultauth_auth_events_total');
+    });
+  });
+
   // ── X-Request-ID ───────────────────────────────────────
   describe('X-Request-ID header', () => {
     it('should include x-request-id in response headers', async () => {

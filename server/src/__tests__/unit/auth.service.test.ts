@@ -10,6 +10,9 @@ jest.mock('../../services/password.service');
 jest.mock('../../services/token.service');
 jest.mock('../../services/email.service');
 jest.mock('../../services/rbac.service');
+jest.mock('../../utils/metrics', () => ({
+  authEventsTotal: { inc: jest.fn() },
+}));
 
 import { userRepository } from '../../repositories/user.repository';
 import { auditRepository } from '../../repositories/audit.repository';
