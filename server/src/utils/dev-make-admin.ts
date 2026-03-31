@@ -20,6 +20,7 @@ async function makeAdmin() {
   if (!user) {
     console.error(`User not found: ${email}`);
     process.exit(1);
+    return;
   }
 
   const [adminRole] = await db
@@ -30,6 +31,7 @@ async function makeAdmin() {
   if (!adminRole) {
     console.error('Admin role not found — run migrations first');
     process.exit(1);
+    return;
   }
 
   await db
