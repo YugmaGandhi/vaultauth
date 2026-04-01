@@ -150,6 +150,15 @@ export class UserRepository {
     return toSafeUser(user);
   }
 
+  // ── Clear Active Org ───────────────────────────────────
+  // Used when an org is deleted — clears activeOrgId for all users who had it
+  async clearActiveOrg(orgId: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ activeOrgId: null, updatedAt: new Date() })
+      .where(eq(users.activeOrgId, orgId));
+  }
+
   // ── Link OAuth to existing account ────────────────────────
   async linkOAuth(
     id: string,
