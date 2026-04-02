@@ -73,6 +73,9 @@ describe('RBAC Routes + Authorize Middleware', () => {
         'write:roles',
         'read:audit-logs',
       ],
+      orgId: null,
+      orgRole: null,
+      orgPermissions: [],
     };
     return tokenService.generateAccessToken(tokenUser);
   }

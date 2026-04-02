@@ -30,11 +30,15 @@ export type OrgPermission = InferSelectModel<typeof orgPermissions>;
 export type SafeUser = Omit<User, 'passwordHash'>;
 
 // What gets embedded in JWT payload
+// Platform claims (roles, permissions) and org claims are separate
 export type TokenUser = {
   id: string;
   email: string;
   roles: string[];
   permissions: string[];
+  orgId: string | null;
+  orgRole: string | null;
+  orgPermissions: string[];
 };
 
 // ── Utility Functions ────────────────────────────────────

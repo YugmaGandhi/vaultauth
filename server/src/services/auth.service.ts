@@ -195,6 +195,9 @@ export class AuthService {
       email: user.email,
       roles,
       permissions,
+      orgId: null,
+      orgRole: null,
+      orgPermissions: [],
     };
 
     const accessToken = await tokenService.generateAccessToken(tokenUser);
@@ -320,6 +323,9 @@ export class AuthService {
       email: user.email,
       roles,
       permissions,
+      orgId: null,
+      orgRole: null,
+      orgPermissions: [],
     };
 
     const newAccessToken = await tokenService.generateAccessToken(tokenUser);
@@ -531,6 +537,9 @@ export class AuthService {
       email: user.email,
       roles,
       permissions,
+      orgId: null,
+      orgRole: null,
+      orgPermissions: [],
     };
 
     const accessToken = await tokenService.generateAccessToken(tokenUser);
