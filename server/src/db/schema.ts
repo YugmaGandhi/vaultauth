@@ -229,6 +229,78 @@ export const orgInvitations = pgTable('org_invitations', {
     .defaultNow(),
 });
 
+// ── Org Roles (custom roles per organization) ─────────
+export const orgRoles = pgTable(
+  'org_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    description: text('description'),
+    isSystem: boolean('is_system').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [uniqueIndex('org_roles_org_name_idx').on(table.orgId, table.name)]
+);
+
+// ── Org Permissions (permissions scoped per organization)
+export const orgPermissions = pgTable(
+  'org_permissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    resource: varchar('resource', { length: 50 }).notNull(),
+    action: varchar('action', { length: 50 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('org_permissions_org_name_idx').on(table.orgId, table.name),
+  ]
+);
+
+// ── Org Member Roles (junction: member ↔ custom org role)
+export const orgMemberRoles = pgTable(
+  'org_member_roles',
+  {
+    orgMemberId: uuid('org_member_id')
+      .notNull()
+      .references(() => orgMembers.id, { onDelete: 'cascade' }),
+    orgRoleId: uuid('org_role_id')
+      .notNull()
+      .references(() => orgRoles.id, { onDelete: 'cascade' }),
+    assignedBy: uuid('assigned_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.orgMemberId, table.orgRoleId] })]
+);
+
+// ── Org Role Permissions (junction: org role ↔ org permission)
+export const orgRolePermissions = pgTable(
+  'org_role_permissions',
+  {
+    orgRoleId: uuid('org_role_id')
+      .notNull()
+      .references(() => orgRoles.id, { onDelete: 'cascade' }),
+    orgPermissionId: uuid('org_permission_id')
+      .notNull()
+      .references(() => orgPermissions.id, { onDelete: 'cascade' }),
+  },
+  (table) => [primaryKey({ columns: [table.orgRoleId, table.orgPermissionId] })]
+);
+
 // ── Relations (for Drizzle joins) ───────────────────────
 export const organizationsRelations = relations(
   organizations,
@@ -239,6 +311,8 @@ export const organizationsRelations = relations(
     }),
     members: many(orgMembers),
     invitations: many(orgInvitations),
+    orgRoles: many(orgRoles),
+    orgPermissions: many(orgPermissions),
   })
 );
 
@@ -263,7 +337,7 @@ export const permissionsRelations = relations(permissions, ({ many }) => ({
   rolePermissions: many(rolePermissions),
 }));
 
-export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
+export const orgMembersRelations = relations(orgMembers, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [orgMembers.orgId],
     references: [organizations.id],
@@ -272,6 +346,7 @@ export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
     fields: [orgMembers.userId],
     references: [users.id],
   }),
+  memberRoles: many(orgMemberRoles),
 }));
 
 export const orgInvitationsRelations = relations(orgInvitations, ({ one }) => ({
@@ -284,3 +359,48 @@ export const orgInvitationsRelations = relations(orgInvitations, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const orgRolesRelations = relations(orgRoles, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [orgRoles.orgId],
+    references: [organizations.id],
+  }),
+  memberRoles: many(orgMemberRoles),
+  rolePermissions: many(orgRolePermissions),
+}));
+
+export const orgPermissionsRelations = relations(
+  orgPermissions,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [orgPermissions.orgId],
+      references: [organizations.id],
+    }),
+    rolePermissions: many(orgRolePermissions),
+  })
+);
+
+export const orgMemberRolesRelations = relations(orgMemberRoles, ({ one }) => ({
+  member: one(orgMembers, {
+    fields: [orgMemberRoles.orgMemberId],
+    references: [orgMembers.id],
+  }),
+  role: one(orgRoles, {
+    fields: [orgMemberRoles.orgRoleId],
+    references: [orgRoles.id],
+  }),
+}));
+
+export const orgRolePermissionsRelations = relations(
+  orgRolePermissions,
+  ({ one }) => ({
+    role: one(orgRoles, {
+      fields: [orgRolePermissions.orgRoleId],
+      references: [orgRoles.id],
+    }),
+    permission: one(orgPermissions, {
+      fields: [orgRolePermissions.orgPermissionId],
+      references: [orgPermissions.id],
+    }),
+  })
+);

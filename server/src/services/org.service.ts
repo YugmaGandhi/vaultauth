@@ -5,6 +5,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors';
 import { Organization } from '../utils/types';
 import { createLogger } from '../utils/logger';
 import { env } from '../config/env';
+import { seedOrgDefaults } from '../db/seed';
 
 const log = createLogger('OrgService');
 
@@ -79,10 +80,13 @@ export class OrgService {
       createdBy: userId,
     });
 
-    // Step 6 — Add creator as owner
+    // Step 6 — Seed default org roles + permissions
+    await seedOrgDefaults(org.id);
+
+    // Step 7 — Add creator as owner
     await orgRepository.addMember(org.id, userId, 'owner');
 
-    // Step 7 — Audit log
+    // Step 8 — Audit log
     await auditRepository.create({
       userId,
       eventType: 'org_created',

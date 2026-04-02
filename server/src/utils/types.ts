@@ -7,6 +7,8 @@ import {
   organizations,
   orgMembers,
   orgInvitations,
+  orgRoles,
+  orgPermissions,
 } from '../db/schema';
 
 // Infer types directly from Drizzle schema
@@ -20,6 +22,8 @@ export type Organization = InferSelectModel<typeof organizations>;
 export type NewOrganization = InferInsertModel<typeof organizations>;
 export type OrgMember = InferSelectModel<typeof orgMembers>;
 export type OrgInvitation = InferSelectModel<typeof orgInvitations>;
+export type OrgRole = InferSelectModel<typeof orgRoles>;
+export type OrgPermission = InferSelectModel<typeof orgPermissions>;
 
 // User shape safe to return in API responses
 // Never includes passwordHash
