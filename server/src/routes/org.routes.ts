@@ -45,6 +45,20 @@ const updateMemberRoleSchema = z.object({
   }),
 });
 
+const inviteMemberSchema = z.object({
+  email: z.string().email('Invalid email format').toLowerCase().trim(),
+  role: z
+    .enum(['member', 'admin'], {
+      errorMap: () => ({ message: 'Role must be member or admin' }),
+    })
+    .default('member'),
+});
+
+const invitationParamSchema = z.object({
+  orgId: z.string().uuid('Invalid organization ID'),
+  invitationId: z.string().uuid('Invalid invitation ID'),
+});
+
 const orgRoutes: FastifyPluginCallback = (
   app: FastifyInstance,
   _options,
@@ -289,6 +303,105 @@ const orgRoutes: FastifyPluginCallback = (
         return sendError(reply, err.statusCode, err.code, err.message);
       }
       log.error({ err, reqId: request.id }, 'Unexpected error removing member');
+      throw err;
+    }
+  });
+
+  // ── POST /api/orgs/:orgId/members/invite — Invite member
+  app.post('/:orgId/members/invite', async (request, reply) => {
+    const paramsParsed = orgIdParamSchema.safeParse(request.params);
+    if (!paramsParsed.success) {
+      return sendValidationError(
+        reply,
+        paramsParsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    const bodyParsed = inviteMemberSchema.safeParse(request.body);
+    if (!bodyParsed.success) {
+      return sendValidationError(
+        reply,
+        bodyParsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      await orgService.inviteMember({
+        orgId: paramsParsed.data.orgId,
+        email: bodyParsed.data.email,
+        role: bodyParsed.data.role,
+        invitedByUserId: request.user!.id,
+        invitedByEmail: request.user!.email,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+
+      return sendCreated(reply, {
+        message: 'Invitation sent successfully',
+      });
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      log.error({ err, reqId: request.id }, 'Unexpected error inviting member');
+      throw err;
+    }
+  });
+
+  // ── GET /api/orgs/:orgId/invitations — List pending ───
+  app.get('/:orgId/invitations', async (request, reply) => {
+    const parsed = orgIdParamSchema.safeParse(request.params);
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    const invitations = await orgService.listInvitations(parsed.data.orgId);
+    return sendSuccess(reply, { invitations });
+  });
+
+  // ── DELETE /api/orgs/:orgId/invitations/:invitationId ─
+  app.delete('/:orgId/invitations/:invitationId', async (request, reply) => {
+    const parsed = invitationParamSchema.safeParse(request.params);
+    if (!parsed.success) {
+      return sendValidationError(
+        reply,
+        parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        }))
+      );
+    }
+
+    try {
+      await orgService.revokeInvitation({
+        orgId: parsed.data.orgId,
+        invitationId: parsed.data.invitationId,
+        userId: request.user!.id,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      });
+
+      return sendSuccess(reply, { message: 'Invitation revoked' });
+    } catch (err) {
+      if (isAppError(err)) {
+        return sendError(reply, err.statusCode, err.code, err.message);
+      }
+      log.error(
+        { err, reqId: request.id },
+        'Unexpected error revoking invitation'
+      );
       throw err;
     }
   });

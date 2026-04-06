@@ -110,9 +110,7 @@ export class OrgRepository {
     return row ?? null;
   }
   // ── List members ───────────────────────────────────────
-  async listMembers(
-    orgId: string
-  ): Promise<
+  async listMembers(orgId: string): Promise<
     {
       id: string;
       userId: string;

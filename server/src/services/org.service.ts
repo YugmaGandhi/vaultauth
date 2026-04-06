@@ -1,11 +1,18 @@
 import { orgRepository } from '../repositories/org.repository';
 import { auditRepository } from '../repositories/audit.repository';
 import { userRepository } from '../repositories/user.repository';
-import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors';
+import { invitationRepository } from '../repositories/invitation.repository';
+import {
+  AuthError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '../utils/errors';
 import { Organization } from '../utils/types';
 import { createLogger } from '../utils/logger';
 import { env } from '../config/env';
 import { seedOrgDefaults } from '../db/seed';
+import { emailService } from './email.service';
 
 const log = createLogger('OrgService');
 
@@ -376,6 +383,201 @@ export class OrgService {
     });
 
     log.info({ orgId, targetUserId }, 'Member removed');
+  }
+
+  // ── Invitations ───────────────────────────────────────
+
+  async inviteMember(params: {
+    orgId: string;
+    email: string;
+    role: string;
+    invitedByUserId: string;
+    invitedByEmail: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    const {
+      orgId,
+      email,
+      role,
+      invitedByUserId,
+      invitedByEmail,
+      ipAddress,
+      userAgent,
+    } = params;
+
+    log.info({ orgId, email, role }, 'Inviting member');
+
+    // Check org exists
+    const org = await orgRepository.findById(orgId);
+    if (!org) {
+      throw new NotFoundError('NOT_FOUND', 'Organization not found');
+    }
+
+    // Check if already a member
+    const existingUser = await userRepository.findByEmail(email);
+    if (existingUser) {
+      const membership = await orgRepository.findMembership(
+        orgId,
+        existingUser.id
+      );
+      if (membership) {
+        throw new ConflictError(
+          'ALREADY_MEMBER',
+          'This user is already a member of the organization'
+        );
+      }
+    }
+
+    // Check for existing pending invitation
+    const pendingInvite = await invitationRepository.findPending(orgId, email);
+    if (pendingInvite) {
+      throw new ConflictError(
+        'INVITATION_PENDING',
+        'A pending invitation already exists for this email'
+      );
+    }
+
+    // Create invitation token
+    const rawToken = await invitationRepository.create({
+      orgId,
+      email,
+      role,
+      invitedBy: invitedByUserId,
+    });
+
+    // Send invitation email — fire and forget
+    void emailService.sendOrgInvitationEmail({
+      email,
+      token: rawToken,
+      orgName: org.name,
+      invitedByEmail,
+      role,
+    });
+
+    await auditRepository.create({
+      userId: invitedByUserId,
+      eventType: 'org_member_invited',
+      ipAddress,
+      userAgent,
+      metadata: { orgId, email, role },
+    });
+
+    log.info({ orgId, email }, 'Invitation sent');
+  }
+
+  async acceptInvitation(params: {
+    token: string;
+    userId: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<{
+    orgId: string;
+    orgName: string;
+    orgSlug: string;
+    role: string;
+  }> {
+    const { token, userId, ipAddress, userAgent } = params;
+
+    log.info({ userId }, 'Accepting invitation');
+
+    // Find valid invitation
+    const invitation = await invitationRepository.findByToken(token);
+    if (!invitation) {
+      throw new AuthError(
+        'TOKEN_INVALID',
+        'This invitation is invalid, expired, or has already been used',
+        400
+      );
+    }
+
+    // Check if already a member
+    const existingMembership = await orgRepository.findMembership(
+      invitation.orgId,
+      userId
+    );
+    if (existingMembership) {
+      throw new ConflictError(
+        'ALREADY_MEMBER',
+        'You are already a member of this organization'
+      );
+    }
+
+    // Add as member with the role specified in the invitation
+    await orgRepository.addMember(invitation.orgId, userId, invitation.role);
+
+    // Mark invitation as accepted
+    await invitationRepository.markAccepted(invitation.id);
+
+    // Get org details for response
+    const org = await orgRepository.findById(invitation.orgId);
+
+    await auditRepository.create({
+      userId,
+      eventType: 'org_member_joined',
+      ipAddress,
+      userAgent,
+      metadata: {
+        orgId: invitation.orgId,
+        role: invitation.role,
+        invitationId: invitation.id,
+      },
+    });
+
+    log.info(
+      { orgId: invitation.orgId, userId, role: invitation.role },
+      'Invitation accepted'
+    );
+
+    return {
+      orgId: invitation.orgId,
+      orgName: org!.name,
+      orgSlug: org!.slug,
+      role: invitation.role,
+    };
+  }
+
+  async listInvitations(orgId: string) {
+    return invitationRepository.listPending(orgId);
+  }
+
+  async revokeInvitation(params: {
+    orgId: string;
+    invitationId: string;
+    userId: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    const { orgId, invitationId, userId, ipAddress, userAgent } = params;
+
+    const invitation = await invitationRepository.findById(invitationId);
+    if (!invitation || invitation.orgId !== orgId) {
+      throw new NotFoundError('NOT_FOUND', 'Invitation not found');
+    }
+
+    if (invitation.status !== 'pending') {
+      throw new ConflictError(
+        'INVITATION_NOT_PENDING',
+        'Only pending invitations can be revoked'
+      );
+    }
+
+    await invitationRepository.revoke(invitationId);
+
+    await auditRepository.create({
+      userId,
+      eventType: 'org_member_invited',
+      ipAddress,
+      userAgent,
+      metadata: {
+        orgId,
+        invitationId,
+        action: 'revoked',
+        email: invitation.email,
+      },
+    });
+
+    log.info({ orgId, invitationId }, 'Invitation revoked');
   }
 }
 
