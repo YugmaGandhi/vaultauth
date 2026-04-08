@@ -1,0 +1,14 @@
+meta {
+  name: List Sessions
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/auth/sessions
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

@@ -41,6 +41,7 @@ type LoginParams = {
 };
 
 type LoginResult = {
+  sessionId: string;
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
@@ -236,7 +237,7 @@ export class AuthService {
     const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
 
     // Step 6 — Store refresh token
-    await tokenRepository.create({
+    const session = await tokenRepository.create({
       userId: user.id,
       tokenHash: refreshTokenHash,
       deviceInfo: userAgent,
@@ -266,6 +267,7 @@ export class AuthService {
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      sessionId: session.id,
       accessToken,
       refreshToken: rawRefreshToken,
       expiresIn,
@@ -367,7 +369,7 @@ export class AuthService {
       tokenService.hashRefreshToken(newRawRefreshToken);
 
     // Step 6 — Store new refresh token
-    await tokenRepository.create({
+    const newSession = await tokenRepository.create({
       userId: user.id,
       tokenHash: newRefreshTokenHash,
       deviceInfo: userAgent,
@@ -386,6 +388,7 @@ export class AuthService {
     log.info({ userId: user.id }, 'Token refresh successful');
 
     return {
+      sessionId: newSession.id,
       accessToken: newAccessToken,
       refreshToken: newRawRefreshToken,
       expiresIn: 900,
@@ -581,7 +584,7 @@ export class AuthService {
     const rawRefreshToken = tokenService.generateRefreshToken();
     const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
 
-    await tokenRepository.create({
+    const oauthSession = await tokenRepository.create({
       userId: user.id,
       tokenHash: refreshTokenHash,
       deviceInfo: userAgent,
@@ -608,6 +611,7 @@ export class AuthService {
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      sessionId: oauthSession.id,
       accessToken,
       refreshToken: rawRefreshToken,
       expiresIn: 900,
