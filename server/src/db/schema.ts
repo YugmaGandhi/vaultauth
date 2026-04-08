@@ -41,6 +41,8 @@ export const auditEventTypeEnum = pgEnum('audit_event_type', [
   'org_member_removed',
   'org_member_role_changed',
   'org_switched',
+  'session_revoked',
+  'all_sessions_revoked',
 ]);
 
 export const orgInvitationStatusEnum = pgEnum('org_invitation_status', [

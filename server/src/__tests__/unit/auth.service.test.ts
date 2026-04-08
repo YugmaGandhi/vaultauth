@@ -78,7 +78,7 @@ beforeEach(() => {
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   );
   mockTokenService.generateAccessToken.mockResolvedValue('mock-access-token');
-  mockTokenRepo.create.mockResolvedValue(undefined as never);
+  mockTokenRepo.create.mockResolvedValue({ id: 'mock-session-id' } as never);
 });
 
 describe('AuthService', () => {

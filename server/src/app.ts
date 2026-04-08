@@ -12,6 +12,7 @@ import { buildErrorResponse } from './utils/response';
 import { rbacRoutes } from './routes/rbac.routes';
 import { adminRoutes } from './routes/admin.routes';
 import { orgRoutes } from './routes/org.routes';
+import { sessionRoutes } from './routes/session.routes';
 import { pool } from './db/connection';
 import { seedSystemData } from './db/seed';
 import {
@@ -157,6 +158,7 @@ export async function buildApp() {
   // Register all auth routes under /auth prefix
   void app.register(authRoutes, { prefix: '/auth' });
   void app.register(oauthRoutes, { prefix: '/auth' });
+  void app.register(sessionRoutes, { prefix: '/auth' });
 
   void app.register(rbacRoutes, { prefix: '/api' });
   void app.register(adminRoutes, { prefix: '/api/admin' });
