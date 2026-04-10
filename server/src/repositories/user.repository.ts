@@ -242,6 +242,14 @@ export class UserRepository {
       .where(eq(users.id, id));
   }
 
+  // ── Hard Delete ───────────────────────────────────────
+  // Permanently removes the user and cascades to all related data.
+  // Only called by admin force-delete and the purge job.
+  async deleteUser(id: string): Promise<void> {
+    log.warn({ userId: id }, 'Hard-deleting user account');
+    await db.delete(users).where(eq(users.id, id));
+  }
+
   // ── Link OAuth to existing account ────────────────────────
   async linkOAuth(
     id: string,

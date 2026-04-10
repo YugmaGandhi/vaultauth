@@ -15,6 +15,7 @@ import { orgRoutes } from './routes/org.routes';
 import { sessionRoutes } from './routes/session.routes';
 import { pool } from './db/connection';
 import { seedSystemData } from './db/seed';
+import { startDeletionPurgeJob } from './jobs/deletion-purge.job';
 import {
   httpRequestDuration,
   httpRequestsTotal,
@@ -110,6 +111,11 @@ export async function buildApp() {
   // ── Seed system data ───────────────────────────────────
   // Idempotent — ensures roles + permissions exist on every boot
   await seedSystemData();
+
+  // ── Background Jobs ────────────────────────────────────
+  if (env.NODE_ENV !== 'test') {
+    startDeletionPurgeJob();
+  }
 
   // ── Routes ─────────────────────────────────────────────
   app.get('/health', async (_request, reply) => {

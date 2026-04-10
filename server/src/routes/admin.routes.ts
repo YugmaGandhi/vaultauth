@@ -13,6 +13,7 @@ import {
 } from '../utils/response';
 import { auditRepository } from '../repositories/audit.repository';
 import { adminService } from '../services/admin.service';
+import { deletionService } from '../services/deletion.service';
 
 const log = createLogger('AdminRoutes');
 
@@ -297,6 +298,37 @@ export function adminRoutes(
         log.error(
           { err, reqId: request.id },
           'Unexpected error revoking user sessions'
+        );
+        throw err;
+      }
+    }
+  );
+
+  // ── POST /api/admin/users/:id/delete — force-delete ───
+  app.post(
+    '/users/:id/delete',
+    { preHandler: [authenticate, authorize('write:users')] },
+    async (request, reply) => {
+      const parsed = userIdParamSchema.safeParse(request.params);
+      if (!parsed.success) {
+        return sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid user ID');
+      }
+
+      try {
+        await deletionService.forceDelete({
+          userId: parsed.data.id,
+          adminId: request.user!.id,
+          ipAddress: request.ip,
+        });
+        return sendSuccess(reply, {
+          message: 'User account permanently deleted',
+        });
+      } catch (err) {
+        if (isAppError(err))
+          return sendError(reply, err.statusCode, err.code, err.message);
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error force-deleting user'
         );
         throw err;
       }
