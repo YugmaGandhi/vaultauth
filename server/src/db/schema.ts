@@ -57,6 +57,12 @@ export const deletionStatusEnum = pgEnum('deletion_status', [
   'completed',
 ]);
 
+export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
+  'pending',
+  'success',
+  'failed',
+]);
+
 export const orgInvitationStatusEnum = pgEnum('org_invitation_status', [
   'pending',
   'accepted',
@@ -331,6 +337,48 @@ export const deletionRequests = pgTable('deletion_requests', {
   forcedByAdmin: boolean('forced_by_admin').notNull().default(false),
 });
 
+// ── Webhook Endpoints ───────────────────────────────────
+// One endpoint = one URL an org wants us to POST events to.
+// events: jsonb array of event type strings e.g. ["user.login", "user.registered"]
+// secretHash: SHA-256 of the signing secret. Raw secret shown once, never stored.
+export const webhookEndpoints = pgTable('webhook_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  url: varchar('url', { length: 2048 }).notNull(),
+  events: jsonb('events').notNull().default([]),
+  secretHash: varchar('secret_hash', { length: 255 }).notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Webhook Deliveries ──────────────────────────────────
+// Append-only delivery log. One row per delivery attempt batch.
+// status 'pending' = waiting first attempt OR scheduled for retry.
+// nextRetryAt drives the retry job query.
+export const webhookDeliveries = pgTable('webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  webhookEndpointId: uuid('webhook_endpoint_id')
+    .notNull()
+    .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 100 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  status: webhookDeliveryStatusEnum('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  responseCode: integer('response_code'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ── Relations (for Drizzle joins) ───────────────────────
 export const organizationsRelations = relations(
   organizations,
@@ -343,6 +391,7 @@ export const organizationsRelations = relations(
     invitations: many(orgInvitations),
     orgRoles: many(orgRoles),
     orgPermissions: many(orgPermissions),
+    webhookEndpoints: many(webhookEndpoints),
   })
 );
 
@@ -442,6 +491,27 @@ export const orgRolePermissionsRelations = relations(
     permission: one(orgPermissions, {
       fields: [orgRolePermissions.orgPermissionId],
       references: [orgPermissions.id],
+    }),
+  })
+);
+
+export const webhookEndpointsRelations = relations(
+  webhookEndpoints,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [webhookEndpoints.orgId],
+      references: [organizations.id],
+    }),
+    deliveries: many(webhookDeliveries),
+  })
+);
+
+export const webhookDeliveriesRelations = relations(
+  webhookDeliveries,
+  ({ one }) => ({
+    endpoint: one(webhookEndpoints, {
+      fields: [webhookDeliveries.webhookEndpointId],
+      references: [webhookEndpoints.id],
     }),
   })
 );

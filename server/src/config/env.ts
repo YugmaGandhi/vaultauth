@@ -61,6 +61,16 @@ export const envSchema = z.object({
   OAUTH_CALLBACK_BASE_URL: z.string().default('http://localhost:3000'),
   OAUTH_SUCCESS_REDIRECT: z.string().default('http://localhost:3001/dashboard'),
   OAUTH_FAILURE_REDIRECT: z.string().default('http://localhost:3001/login'),
+
+  // Webhook — 32-byte hex key for AES-256-GCM encryption of signing secrets.
+  // In production: generate with `openssl rand -hex 32` and set as secret.
+  // The default is intentionally insecure — override before deploying.
+  WEBHOOK_SECRET_KEY: z
+    .string()
+    .length(64, 'WEBHOOK_SECRET_KEY must be a 64-char hex string (32 bytes)')
+    .default(
+      '0000000000000000000000000000000000000000000000000000000000000000'
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;
