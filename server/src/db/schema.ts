@@ -46,6 +46,15 @@ export const auditEventTypeEnum = pgEnum('audit_event_type', [
   'user_disabled',
   'user_enabled',
   'user_created_by_admin',
+  'account_deletion_requested',
+  'account_deletion_cancelled',
+  'account_deleted',
+]);
+
+export const deletionStatusEnum = pgEnum('deletion_status', [
+  'pending',
+  'cancelled',
+  'completed',
 ]);
 
 export const orgInvitationStatusEnum = pgEnum('org_invitation_status', [
@@ -307,6 +316,21 @@ export const orgRolePermissions = pgTable(
   (table) => [primaryKey({ columns: [table.orgRoleId, table.orgPermissionId] })]
 );
 
+// ── Deletion Requests ───────────────────────────────────
+export const deletionRequests = pgTable('deletion_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  requestedAt: timestamp('requested_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  scheduledPurgeAt: timestamp('scheduled_purge_at', {
+    withTimezone: true,
+  }).notNull(),
+  status: deletionStatusEnum('status').notNull().default('pending'),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  forcedByAdmin: boolean('forced_by_admin').notNull().default(false),
+});
+
 // ── Relations (for Drizzle joins) ───────────────────────
 export const organizationsRelations = relations(
   organizations,
@@ -328,6 +352,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   userRoles: many(userRoles),
   auditLogs: many(auditLogs),
   orgMemberships: many(orgMembers),
+  deletionRequests: many(deletionRequests),
   activeOrg: one(organizations, {
     fields: [users.activeOrgId],
     references: [organizations.id],
@@ -396,6 +421,16 @@ export const orgMemberRolesRelations = relations(orgMemberRoles, ({ one }) => ({
     references: [orgRoles.id],
   }),
 }));
+
+export const deletionRequestsRelations = relations(
+  deletionRequests,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [deletionRequests.userId],
+      references: [users.id],
+    }),
+  })
+);
 
 export const orgRolePermissionsRelations = relations(
   orgRolePermissions,
