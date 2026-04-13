@@ -1,6 +1,6 @@
 {
   "name": "@griffon/server",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
