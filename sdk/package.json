@@ -1,10 +1,12 @@
 {
-  "name": "@vaultauth/js",
-  "version": "1.0.0",
-  "description": "Official JavaScript/TypeScript SDK for VaultAuth",
+  "name": "@griffon/js",
+  "version": "0.2.0",
+  "description": "Official JavaScript/TypeScript SDK for Griffon",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -12,7 +14,7 @@
     "lint": "eslint src --ext .ts"
   },
   "keywords": [
-    "vaultauth",
+    "griffon",
     "authentication",
     "auth",
     "jwt",

@@ -11,6 +11,7 @@ import {
   primaryKey,
   text,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -41,6 +42,26 @@ export const auditEventTypeEnum = pgEnum('audit_event_type', [
   'org_member_removed',
   'org_member_role_changed',
   'org_switched',
+  'session_revoked',
+  'all_sessions_revoked',
+  'user_disabled',
+  'user_enabled',
+  'user_created_by_admin',
+  'account_deletion_requested',
+  'account_deletion_cancelled',
+  'account_deleted',
+]);
+
+export const deletionStatusEnum = pgEnum('deletion_status', [
+  'pending',
+  'cancelled',
+  'completed',
+]);
+
+export const webhookDeliveryStatusEnum = pgEnum('webhook_delivery_status', [
+  'pending',
+  'success',
+  'failed',
 ]);
 
 export const orgInvitationStatusEnum = pgEnum('org_invitation_status', [
@@ -57,7 +78,12 @@ export const organizations = pgTable('organizations', {
   slug: varchar('slug', { length: 255 }).notNull().unique(),
   logoUrl: varchar('logo_url', { length: 2048 }),
   metadata: jsonb('metadata').notNull().default({}),
-  createdBy: uuid('created_by'),
+  // FK to users.id, set null on user deletion so the org isn't orphaned.
+  // The AnyPgColumn cast breaks the otherwise-circular type inference
+  // between users <-> organizations (users.activeOrgId references back).
+  createdBy: uuid('created_by').references((): AnyPgColumn => users.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -72,6 +98,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }),
   isVerified: boolean('is_verified').notNull().default(false),
+  isDisabled: boolean('is_disabled').notNull().default(false),
   isLocked: boolean('is_locked').notNull().default(false),
   failedAttempts: integer('failed_attempts').notNull().default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
@@ -301,6 +328,63 @@ export const orgRolePermissions = pgTable(
   (table) => [primaryKey({ columns: [table.orgRoleId, table.orgPermissionId] })]
 );
 
+// ── Deletion Requests ───────────────────────────────────
+export const deletionRequests = pgTable('deletion_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  requestedAt: timestamp('requested_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  scheduledPurgeAt: timestamp('scheduled_purge_at', {
+    withTimezone: true,
+  }).notNull(),
+  status: deletionStatusEnum('status').notNull().default('pending'),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  forcedByAdmin: boolean('forced_by_admin').notNull().default(false),
+});
+
+// ── Webhook Endpoints ───────────────────────────────────
+// One endpoint = one URL an org wants us to POST events to.
+// events: jsonb array of event type strings e.g. ["user.login", "user.registered"]
+// secretHash: SHA-256 of the signing secret. Raw secret shown once, never stored.
+export const webhookEndpoints = pgTable('webhook_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  url: varchar('url', { length: 2048 }).notNull(),
+  events: jsonb('events').notNull().default([]),
+  secretHash: varchar('secret_hash', { length: 255 }).notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Webhook Deliveries ──────────────────────────────────
+// Append-only delivery log. One row per delivery attempt batch.
+// status 'pending' = waiting first attempt OR scheduled for retry.
+// nextRetryAt drives the retry job query.
+export const webhookDeliveries = pgTable('webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  webhookEndpointId: uuid('webhook_endpoint_id')
+    .notNull()
+    .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 100 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  status: webhookDeliveryStatusEnum('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  responseCode: integer('response_code'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ── Relations (for Drizzle joins) ───────────────────────
 export const organizationsRelations = relations(
   organizations,
@@ -313,6 +397,7 @@ export const organizationsRelations = relations(
     invitations: many(orgInvitations),
     orgRoles: many(orgRoles),
     orgPermissions: many(orgPermissions),
+    webhookEndpoints: many(webhookEndpoints),
   })
 );
 
@@ -322,6 +407,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   userRoles: many(userRoles),
   auditLogs: many(auditLogs),
   orgMemberships: many(orgMembers),
+  deletionRequests: many(deletionRequests),
   activeOrg: one(organizations, {
     fields: [users.activeOrgId],
     references: [organizations.id],
@@ -391,6 +477,16 @@ export const orgMemberRolesRelations = relations(orgMemberRoles, ({ one }) => ({
   }),
 }));
 
+export const deletionRequestsRelations = relations(
+  deletionRequests,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [deletionRequests.userId],
+      references: [users.id],
+    }),
+  })
+);
+
 export const orgRolePermissionsRelations = relations(
   orgRolePermissions,
   ({ one }) => ({
@@ -401,6 +497,27 @@ export const orgRolePermissionsRelations = relations(
     permission: one(orgPermissions, {
       fields: [orgRolePermissions.orgPermissionId],
       references: [orgPermissions.id],
+    }),
+  })
+);
+
+export const webhookEndpointsRelations = relations(
+  webhookEndpoints,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [webhookEndpoints.orgId],
+      references: [organizations.id],
+    }),
+    deliveries: many(webhookDeliveries),
+  })
+);
+
+export const webhookDeliveriesRelations = relations(
+  webhookDeliveries,
+  ({ one }) => ({
+    endpoint: one(webhookEndpoints, {
+      fields: [webhookDeliveries.webhookEndpointId],
+      references: [webhookEndpoints.id],
     }),
   })
 );

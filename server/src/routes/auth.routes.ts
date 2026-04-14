@@ -11,6 +11,7 @@ import {
   sendValidationError,
 } from '../utils/response';
 import { authenticate } from '../middleware/authenticate';
+import { deletionService } from '../services/deletion.service';
 
 const log = createLogger('AuthRoutes');
 
@@ -365,6 +366,57 @@ const authRoutes: FastifyPluginCallback = (
           { err, reqId: request.id },
           'Unexpected error switching active org'
         );
+        throw err;
+      }
+    }
+  );
+
+  // ── POST /auth/account/delete — request deletion ──────
+  app.post(
+    '/account/delete',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        const result = await deletionService.requestDeletion({
+          userId: request.user!.id,
+          ipAddress: request.ip,
+        });
+        return sendSuccess(reply, {
+          message:
+            'Deletion request submitted. Your account will be permanently deleted in 30 days.',
+          scheduledPurgeAt: result.scheduledPurgeAt,
+        });
+      } catch (err) {
+        if (isAppError(err)) {
+          return sendError(reply, err.statusCode, err.code, err.message);
+        }
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error requesting account deletion'
+        );
+        throw err;
+      }
+    }
+  );
+
+  // ── DELETE /auth/account/delete — cancel deletion ─────
+  app.delete(
+    '/account/delete',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      try {
+        await deletionService.cancelDeletion({
+          userId: request.user!.id,
+          ipAddress: request.ip,
+        });
+        return sendSuccess(reply, {
+          message:
+            'Deletion request cancelled. Your account will not be deleted.',
+        });
+      } catch (err) {
+        if (isAppError(err)) {
+          return sendError(reply, err.statusCode, err.code, err.message);
+        }
         throw err;
       }
     }

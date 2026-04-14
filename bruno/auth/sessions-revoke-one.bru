@@ -1,0 +1,14 @@
+meta {
+  name: Revoke Session
+  type: http
+  seq: 14
+}
+
+delete {
+  url: {{baseUrl}}/auth/sessions/{{sessionId}}
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

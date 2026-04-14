@@ -9,6 +9,9 @@ import {
   orgInvitations,
   orgRoles,
   orgPermissions,
+  deletionRequests,
+  webhookEndpoints,
+  webhookDeliveries,
 } from '../db/schema';
 
 // Infer types directly from Drizzle schema
@@ -24,6 +27,27 @@ export type OrgMember = InferSelectModel<typeof orgMembers>;
 export type OrgInvitation = InferSelectModel<typeof orgInvitations>;
 export type OrgRole = InferSelectModel<typeof orgRoles>;
 export type OrgPermission = InferSelectModel<typeof orgPermissions>;
+export type DeletionRequest = InferSelectModel<typeof deletionRequests>;
+export type WebhookEndpoint = InferSelectModel<typeof webhookEndpoints>;
+export type WebhookDelivery = InferSelectModel<typeof webhookDeliveries>;
+
+// Safe shape for API responses — secretHash must never be sent to clients,
+// same rule as passwordHash on User.
+// events cast to string[] here because Drizzle types jsonb as unknown.
+export type SafeWebhookEndpoint = Omit<
+  WebhookEndpoint,
+  'secretHash' | 'events'
+> & {
+  events: string[];
+};
+
+export function toSafeWebhookEndpoint(
+  endpoint: WebhookEndpoint
+): SafeWebhookEndpoint {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { secretHash, events, ...rest } = endpoint;
+  return { ...rest, events: (events as string[]) ?? [] };
+}
 
 // User shape safe to return in API responses
 // Never includes passwordHash

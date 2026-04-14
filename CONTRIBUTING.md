@@ -1,4 +1,4 @@
-# Contributing to VaultAuth
+# Contributing to Griffon
 
 Thank you for your interest in contributing. This guide covers everything
 you need to get started.
@@ -17,8 +17,8 @@ you need to get started.
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/vaultauth.git
-cd vaultauth
+git clone https://github.com/YOUR_USERNAME/griffon.git
+cd griffon
 
 # 2. Install dependencies
 npm install
@@ -48,17 +48,18 @@ curl http://localhost:3000/health
 ## Project Structure
 
 ```
-vaultauth/
+griffon/
   server/              # Fastify API
     src/
       routes/          # HTTP handlers — thin, delegate to services
       services/        # Business logic
       repositories/    # Database queries
       middleware/      # authenticate, authorize, rate-limit
+      jobs/            # Background jobs (purge, cleanup)
       db/              # Drizzle schema + migrations
       config/          # Environment validation
       utils/           # Shared utilities
-  sdk/                 # @vaultauth/js npm package
+  sdk/                 # @griffon/js npm package
   bruno/               # API collection for testing
   docs/                # Documentation
   .github/             # CI/CD workflows
@@ -157,4 +158,4 @@ cd server && npm run test:coverage
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/YugmaGandhi/vaultauth/discussions).
+Open a [GitHub Discussion](https://github.com/YugmaGandhi/griffon/discussions).

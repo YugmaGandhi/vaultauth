@@ -12,13 +12,14 @@ import { emailService } from './email.service';
 import { OAuthProfile } from '../config/oauth-providers';
 import { rbacService } from './rbac.service';
 import { authEventsTotal } from '../utils/metrics';
+import { webhookService } from './webhook.service';
 
 const log = createLogger('AuthService');
 
 // TODO: Move audit logging to an async event queue (e.g. Redis Streams)
 // Currently we await audit writes directly in the request path (~2-5ms).
 // Production IDPs (Auth0, Okta) use event pipelines so audit logging
-// never blocks the response. When VaultAuth needs to handle high throughput,
+// never blocks the response. When Griffon needs to handle high throughput,
 // publish audit events to a queue and consume them in a background worker.
 
 type RegisterParams = {
@@ -41,6 +42,7 @@ type LoginParams = {
 };
 
 type LoginResult = {
+  sessionId: string;
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
@@ -217,7 +219,19 @@ export class AuthService {
       throw new AuthError('INVALID_CREDENTIALS', 'Invalid email or password');
     }
 
-    // Step 5 — Generate tokens
+    // Step 5 — Check if account is disabled by admin.
+    // Deferred until after password verification so attackers without the
+    // correct password get the same INVALID_CREDENTIALS response whether
+    // the account is disabled or not — denies a user-enumeration oracle.
+    if (user.isDisabled) {
+      log.warn({ userId: user.id }, 'Login failed — account disabled');
+      throw new ForbiddenError(
+        'ACCOUNT_DISABLED',
+        'Your account has been disabled. Please contact support.'
+      );
+    }
+
+    // Step 6 — Generate tokens
     const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
       user.id
     );
@@ -235,8 +249,8 @@ export class AuthService {
     const rawRefreshToken = tokenService.generateRefreshToken();
     const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
 
-    // Step 6 — Store refresh token
-    await tokenRepository.create({
+    // Step 7 — Store refresh token
+    const session = await tokenRepository.create({
       userId: user.id,
       tokenHash: refreshTokenHash,
       deviceInfo: userAgent,
@@ -244,11 +258,11 @@ export class AuthService {
       expiresAt: tokenService.getRefreshTokenExpiry(),
     });
 
-    // Step 7 — Reset failed attempts + update last login
+    // Step 8 — Reset failed attempts + update last login
     await userRepository.resetFailedAttempts(user.id);
     await userRepository.updateLastLogin(user.id);
 
-    // Step 8 — Audit log
+    // Step 9 — Audit log
     await auditRepository.create({
       userId: user.id,
       eventType: 'user_login',
@@ -260,12 +274,29 @@ export class AuthService {
     authEventsTotal.inc({ event: 'login_success' });
     log.info({ userId: user.id }, 'Login successful');
 
+    // Fanout webhook event — fire and forget, never blocks login
+    if (orgContext.orgId) {
+      void webhookService
+        .fanout({
+          eventType: 'user.login',
+          orgId: orgContext.orgId,
+          payload: {
+            userId: user.id,
+            email: user.email,
+            orgId: orgContext.orgId,
+            ipAddress: ipAddress ?? null,
+          },
+        })
+        .catch((err: unknown) => log.error({ err }, 'Webhook fanout failed'));
+    }
+
     // Access token expires in 15 minutes = 900 seconds
     const expiresIn = 900;
 
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      sessionId: session.id,
       accessToken,
       refreshToken: rawRefreshToken,
       expiresIn,
@@ -367,7 +398,7 @@ export class AuthService {
       tokenService.hashRefreshToken(newRawRefreshToken);
 
     // Step 6 — Store new refresh token
-    await tokenRepository.create({
+    const newSession = await tokenRepository.create({
       userId: user.id,
       tokenHash: newRefreshTokenHash,
       deviceInfo: userAgent,
@@ -386,6 +417,7 @@ export class AuthService {
     log.info({ userId: user.id }, 'Token refresh successful');
 
     return {
+      sessionId: newSession.id,
       accessToken: newAccessToken,
       refreshToken: newRawRefreshToken,
       expiresIn: 900,
@@ -560,7 +592,21 @@ export class AuthService {
       throw new AuthError('INTERNAL_ERROR', 'OAuth login failed', 500);
     }
 
-    // Step 4 — Generate VaultAuth tokens
+    // Block disabled accounts from completing OAuth login.
+    // Mirrors the guard in login() — admins disable users from a single
+    // surface, so OAuth must respect it too.
+    if (user.isDisabled) {
+      log.warn(
+        { userId: user.id, provider: providerName },
+        'OAuth login failed — account disabled'
+      );
+      throw new ForbiddenError(
+        'ACCOUNT_DISABLED',
+        'Your account has been disabled. Please contact support.'
+      );
+    }
+
+    // Step 4 — Generate Griffon tokens
     const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
       user.id
     );
@@ -581,7 +627,7 @@ export class AuthService {
     const rawRefreshToken = tokenService.generateRefreshToken();
     const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
 
-    await tokenRepository.create({
+    const oauthSession = await tokenRepository.create({
       userId: user.id,
       tokenHash: refreshTokenHash,
       deviceInfo: userAgent,
@@ -608,10 +654,14 @@ export class AuthService {
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      sessionId: oauthSession.id,
       accessToken,
       refreshToken: rawRefreshToken,
       expiresIn: 900,
       user: {
+        // Note: `user` here is already SafeUser — userRepository.findByOAuthId
+        // and createOAuthUser both return the sanitized type, so spreading
+        // is safe (no passwordHash present).
         ...user,
         roles: tokenUser.roles,
         permissions: tokenUser.permissions,

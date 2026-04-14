@@ -12,13 +12,18 @@ import { buildErrorResponse } from './utils/response';
 import { rbacRoutes } from './routes/rbac.routes';
 import { adminRoutes } from './routes/admin.routes';
 import { orgRoutes } from './routes/org.routes';
+import { webhookRoutes } from './routes/webhook.routes';
+import { sessionRoutes } from './routes/session.routes';
 import { pool } from './db/connection';
 import { seedSystemData } from './db/seed';
+import { startDeletionPurgeJob } from './jobs/deletion-purge.job';
+import { startWebhookDeliveryJob } from './jobs/webhook-delivery.job';
 import {
   httpRequestDuration,
   httpRequestsTotal,
   metricsRegistry,
 } from './utils/metrics';
+import { APP_VERSION } from './version';
 
 export async function buildApp() {
   const app = Fastify({
@@ -110,6 +115,12 @@ export async function buildApp() {
   // Idempotent — ensures roles + permissions exist on every boot
   await seedSystemData();
 
+  // ── Background Jobs ────────────────────────────────────
+  if (env.NODE_ENV !== 'test') {
+    startDeletionPurgeJob();
+    startWebhookDeliveryJob();
+  }
+
   // ── Routes ─────────────────────────────────────────────
   app.get('/health', async (_request, reply) => {
     // Check database
@@ -134,7 +145,7 @@ export async function buildApp() {
 
     return reply.status(allHealthy ? 200 : 503).send({
       status: allHealthy ? 'ok' : 'degraded',
-      version: '1.0.0',
+      version: APP_VERSION,
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
       dependencies: {
@@ -157,10 +168,12 @@ export async function buildApp() {
   // Register all auth routes under /auth prefix
   void app.register(authRoutes, { prefix: '/auth' });
   void app.register(oauthRoutes, { prefix: '/auth' });
+  void app.register(sessionRoutes, { prefix: '/auth' });
 
   void app.register(rbacRoutes, { prefix: '/api' });
   void app.register(adminRoutes, { prefix: '/api/admin' });
   void app.register(orgRoutes, { prefix: '/api/orgs' });
+  void app.register(webhookRoutes, { prefix: '/api/orgs/:orgId/webhooks' });
 
   // ── Error Handlers ──────────────────────────────────────
   app.setNotFoundHandler((request, reply) => {

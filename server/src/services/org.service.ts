@@ -13,6 +13,7 @@ import { createLogger } from '../utils/logger';
 import { env } from '../config/env';
 import { seedOrgDefaults } from '../db/seed';
 import { emailService } from './email.service';
+import { webhookService } from './webhook.service';
 
 const log = createLogger('OrgService');
 
@@ -382,6 +383,14 @@ export class OrgService {
       metadata: { orgId, targetUserId, role: targetMembership.role },
     });
 
+    void webhookService
+      .fanout({
+        eventType: 'org.member.removed',
+        orgId,
+        payload: { orgId, userId: targetUserId, role: targetMembership.role },
+      })
+      .catch((err: unknown) => log.error({ err }, 'Webhook fanout failed'));
+
     log.info({ orgId, targetUserId }, 'Member removed');
   }
 
@@ -523,6 +532,14 @@ export class OrgService {
         invitationId: invitation.id,
       },
     });
+
+    void webhookService
+      .fanout({
+        eventType: 'org.member.joined',
+        orgId: invitation.orgId,
+        payload: { orgId: invitation.orgId, userId, role: invitation.role },
+      })
+      .catch((err: unknown) => log.error({ err }, 'Webhook fanout failed'));
 
     log.info(
       { orgId: invitation.orgId, userId, role: invitation.role },

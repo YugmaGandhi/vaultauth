@@ -1,6 +1,6 @@
 {
-  "name": "@vaultauth/server",
-  "version": "1.0.0",
+  "name": "@griffon/server",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
@@ -16,8 +16,8 @@
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
-    "db:migrate": "drizzle-kit push --config=drizzle.config.ts",
-    "db:migrate:force": "drizzle-kit push --config=drizzle.config.ts --force",
+    "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
+    "db:push": "drizzle-kit push --config=drizzle.config.ts --force",
     "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
     "lint:staged": "lint-staged",
     "gen:keys": "node -e \"const crypto=require('crypto');const{privateKey,publicKey}=crypto.generateKeyPairSync('rsa',{modulusLength:2048,publicKeyEncoding:{type:'spki',format:'pem'},privateKeyEncoding:{type:'pkcs8',format:'pem'}});const toBase64=(str)=>Buffer.from(str).toString('base64');console.log('JWT_PRIVATE_KEY='+toBase64(privateKey));console.log('');console.log('JWT_PUBLIC_KEY='+toBase64(publicKey));\"",

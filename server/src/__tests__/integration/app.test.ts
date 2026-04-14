@@ -1,6 +1,15 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../app';
 import { redis } from '../../db/redis';
+import { APP_VERSION } from '../../version';
+
+// Read from package.json so the test catches drift between
+// version.ts and package.json on every CI run.
+const pkgVersion: string = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8')
+).version;
 
 describe('App — health, 404, error handler', () => {
   let app: FastifyInstance;
@@ -36,7 +45,9 @@ describe('App — health, 404, error handler', () => {
         dependencies: { database: string; redis: string };
       }>();
       expect(body.status).toBe('ok');
-      expect(body.version).toBe('1.0.0');
+      expect(body.version).toBe(APP_VERSION);
+      // Guard: version.ts must stay in sync with package.json
+      expect(APP_VERSION).toBe(pkgVersion);
       expect(body.dependencies.database).toBe('ok');
       expect(body.dependencies.redis).toBe('ok');
       expect(body.timestamp).toBeDefined();
@@ -87,12 +98,12 @@ describe('App — health, 404, error handler', () => {
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type']).toContain('text/plain');
       // Should contain default Node.js metrics
-      expect(res.body).toContain('vaultauth_nodejs');
+      expect(res.body).toContain('griffon_nodejs');
       // Should contain our custom HTTP metrics
-      expect(res.body).toContain('vaultauth_http_request_duration_seconds');
-      expect(res.body).toContain('vaultauth_http_requests_total');
+      expect(res.body).toContain('griffon_http_request_duration_seconds');
+      expect(res.body).toContain('griffon_http_requests_total');
       // Should contain auth event metrics
-      expect(res.body).toContain('vaultauth_auth_events_total');
+      expect(res.body).toContain('griffon_auth_events_total');
     });
   });
 

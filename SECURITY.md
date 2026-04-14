@@ -13,7 +13,7 @@
 **Please do not report security vulnerabilities through public GitHub issues.**
 
 Instead, please report them by opening a
-[GitHub Security Advisory](https://github.com/YugmaGandhi/vaultauth/security/advisories/new).
+[GitHub Security Advisory](https://github.com/YugmaGandhi/griffon/security/advisories/new).
 
 Include:
 - Description of the vulnerability
@@ -27,7 +27,7 @@ You will receive a response within **48 hours**.
 
 ## Security Design
 
-VaultAuth is built with these security principles:
+Griffon is built with these security principles:
 
 ### Password Storage
 Passwords are hashed with **Argon2id** (OWASP recommended):
@@ -52,6 +52,25 @@ Tokens are signed with **RS256** (asymmetric RSA):
 - 15-minute lockout duration
 - Redis-backed rate limiting per IP
 
+### Account Disable / Blocklist
+- Disabled accounts are blocked at three layers: DB flag, all sessions revoked, Redis blocklist key set
+- Every authenticated request checks the blocklist (`blocklist:user:{id}`) — blocked users are rejected even with a valid JWT
+- Redis check is fail-open: if Redis is down, the request proceeds (access tokens expire in 15 minutes anyway)
+- Blocklist key TTL matches refresh token lifetime (30 days)
+
+### Webhook Signing
+- Every delivery includes `X-Griffon-Signature: sha256=<hmac-sha256-hex>`
+- HMAC key is the endpoint's signing secret (32 cryptographically random bytes)
+- Secret shown once at registration — encrypted at rest with AES-256-GCM using `WEBHOOK_SECRET_KEY`
+- Only HTTPS URLs accepted — HTTP is rejected at registration
+- Failed deliveries retry with exponential backoff: 5s → 30s → 2m → 10m → 30m → 2h (max 6 attempts)
+
+### Account Deletion (GDPR)
+- Self-service deletion has a 30-day grace period — users can cancel before the purge date
+- On purge, the user row is hard-deleted and cascades to all related data (sessions, tokens, org memberships)
+- Audit log records deletion event with email before the row is removed
+- Admin force-delete is immediate and irreversible — requires `write:users` permission
+
 ### Email Security
 - Identical responses for unknown emails (enumeration prevention)
 - Email tokens stored as SHA-256 hashes
@@ -61,7 +80,7 @@ Tokens are signed with **RS256** (asymmetric RSA):
 
 ## Production Checklist
 
-Before deploying VaultAuth to production:
+Before deploying Griffon to production:
 
 - [ ] Deploy behind HTTPS reverse proxy (Nginx, Caddy, AWS ALB)
 - [ ] Set `NODE_ENV=production`
@@ -69,6 +88,7 @@ Before deploying VaultAuth to production:
 - [ ] Restrict `/metrics` to internal network only
 - [ ] Enable database SSL (`DATABASE_SSL=true`)
 - [ ] Set `CORS_ORIGINS` to your exact frontend domain
+- [ ] Set `WEBHOOK_SECRET_KEY` to a unique 32-byte hex key (`openssl rand -hex 32`)
 - [ ] Store secrets in a secrets manager (not plain env files)
 - [ ] Enable database backups
 - [ ] Monitor audit logs for suspicious activity

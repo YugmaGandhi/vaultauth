@@ -1,6 +1,6 @@
 {
-  "name": "vaultauth",
-  "version": "1.0.0",
+  "name": "griffon",
+  "version": "0.2.0",
   "private": true,
   "workspaces": [
     "server",

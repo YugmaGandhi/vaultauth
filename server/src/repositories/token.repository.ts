@@ -1,4 +1,4 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, gt, desc } from 'drizzle-orm';
 import { db } from '../db/connection';
 import { refreshTokens } from '../db/schema';
 import { createLogger } from '../utils/logger';
@@ -43,6 +43,55 @@ export class TokenRepository {
         and(
           eq(refreshTokens.tokenHash, tokenHash),
           isNull(refreshTokens.revokedAt)
+        )
+      );
+
+    return token ?? null;
+  }
+
+  // ── Find Active Sessions for User ─────────────────────
+  // Returns all non-revoked, non-expired tokens for a user
+  // Excludes tokenHash — never expose the raw hash to API consumers
+  async findActiveSessions(userId: string) {
+    log.debug({ userId }, 'Finding active sessions');
+
+    return db
+      .select({
+        id: refreshTokens.id,
+        deviceInfo: refreshTokens.deviceInfo,
+        ipAddress: refreshTokens.ipAddress,
+        createdAt: refreshTokens.createdAt,
+        expiresAt: refreshTokens.expiresAt,
+      })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date())
+        )
+      )
+      .orderBy(desc(refreshTokens.createdAt));
+  }
+
+  // ── Find Active Session by ID (with ownership check) ──
+  // Returns null if session doesn't exist, is expired, revoked,
+  // or belongs to a different user
+  async findActiveById(
+    id: string,
+    userId: string
+  ): Promise<{ id: string } | null> {
+    log.debug({ id, userId }, 'Finding active session by id');
+
+    const [token] = await db
+      .select({ id: refreshTokens.id })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.id, id),
+          eq(refreshTokens.userId, userId),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date())
         )
       );
 
