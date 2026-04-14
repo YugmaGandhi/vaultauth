@@ -11,6 +11,7 @@ import {
   primaryKey,
   text,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -77,7 +78,12 @@ export const organizations = pgTable('organizations', {
   slug: varchar('slug', { length: 255 }).notNull().unique(),
   logoUrl: varchar('logo_url', { length: 2048 }),
   metadata: jsonb('metadata').notNull().default({}),
-  createdBy: uuid('created_by'),
+  // FK to users.id, set null on user deletion so the org isn't orphaned.
+  // The AnyPgColumn cast breaks the otherwise-circular type inference
+  // between users <-> organizations (users.activeOrgId references back).
+  createdBy: uuid('created_by').references((): AnyPgColumn => users.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

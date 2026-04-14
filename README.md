@@ -428,7 +428,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) firs
 **Good first issues:**
 
 -   Add a new OAuth provider (Discord, Apple, Twitter)
--   Add webhook support for auth events
+-   Add rate-limit configuration per route
 -   Build an admin dashboard UI
 
 ----------
