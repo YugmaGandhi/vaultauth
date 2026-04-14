@@ -23,6 +23,7 @@ import {
   httpRequestsTotal,
   metricsRegistry,
 } from './utils/metrics';
+import { APP_VERSION } from './version';
 
 export async function buildApp() {
   const app = Fastify({
@@ -144,7 +145,7 @@ export async function buildApp() {
 
     return reply.status(allHealthy ? 200 : 503).send({
       status: allHealthy ? 'ok' : 'degraded',
-      version: '1.0.0',
+      version: APP_VERSION,
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
       dependencies: {
