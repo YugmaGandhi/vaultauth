@@ -1,4 +1,4 @@
-import { and, eq, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import { db } from '../db/connection';
 import { webhookEndpoints, webhookDeliveries } from '../db/schema';
 import { WebhookDelivery, WebhookEndpoint } from '../utils/types';
@@ -77,7 +77,9 @@ export class WebhookRepository {
   }
 
   // Polling query for the retry job — all pending deliveries whose nextRetryAt
-  // has passed. Limits to 100 per run to cap memory and execution time.
+  // has passed. Ordered by nextRetryAt asc so the oldest-due delivery runs
+  // first (FIFO under contention). Limits to 100 per run to cap memory and
+  // execution time.
   async findDueDeliveries(): Promise<WebhookDelivery[]> {
     return db
       .select()
@@ -88,6 +90,7 @@ export class WebhookRepository {
           lte(webhookDeliveries.nextRetryAt, new Date())
         )
       )
+      .orderBy(asc(webhookDeliveries.nextRetryAt))
       .limit(100);
   }
 
@@ -122,6 +125,7 @@ export class WebhookRepository {
       .select()
       .from(webhookDeliveries)
       .where(eq(webhookDeliveries.webhookEndpointId, endpointId))
+      .orderBy(desc(webhookDeliveries.createdAt))
       .limit(50);
   }
 }
