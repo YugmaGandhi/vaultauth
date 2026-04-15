@@ -12,6 +12,9 @@ import {
   deletionRequests,
   webhookEndpoints,
   webhookDeliveries,
+  mfaSettings,
+  mfaRecoveryCodes,
+  orgMfaPolicies,
 } from '../db/schema';
 
 // Infer types directly from Drizzle schema
@@ -30,6 +33,10 @@ export type OrgPermission = InferSelectModel<typeof orgPermissions>;
 export type DeletionRequest = InferSelectModel<typeof deletionRequests>;
 export type WebhookEndpoint = InferSelectModel<typeof webhookEndpoints>;
 export type WebhookDelivery = InferSelectModel<typeof webhookDeliveries>;
+// MFA
+export type MfaSetting = InferSelectModel<typeof mfaSettings>;
+export type MfaRecoveryCode = InferSelectModel<typeof mfaRecoveryCodes>;
+export type OrgMfaPolicy = InferSelectModel<typeof orgMfaPolicies>;
 
 // Safe shape for API responses — secretHash must never be sent to clients,
 // same rule as passwordHash on User.
@@ -47,6 +54,17 @@ export function toSafeWebhookEndpoint(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { secretHash, events, ...rest } = endpoint;
   return { ...rest, events: (events as string[]) ?? [] };
+}
+
+// MFA setting shape safe to return in API responses.
+// encryptedSecret is AES-256-GCM ciphertext — must never leave the server.
+// Clients only need to know if MFA is enabled and when it was activated.
+export type SafeMfaSetting = Omit<MfaSetting, 'encryptedSecret'>;
+
+export function toSafeMfaSetting(setting: MfaSetting): SafeMfaSetting {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { encryptedSecret, ...safe } = setting;
+  return safe;
 }
 
 // User shape safe to return in API responses
