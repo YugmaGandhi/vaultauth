@@ -50,6 +50,14 @@ export const auditEventTypeEnum = pgEnum('audit_event_type', [
   'account_deletion_requested',
   'account_deletion_cancelled',
   'account_deleted',
+  // Phase 2 — MFA
+  'mfa_enrolled',
+  'mfa_disabled',
+  'mfa_verified',
+  'mfa_recovery_used',
+  'mfa_recovery_regenerated',
+  'org_mfa_enforced',
+  'org_mfa_unenforced',
 ]);
 
 export const deletionStatusEnum = pgEnum('deletion_status', [
@@ -385,6 +393,60 @@ export const webhookDeliveries = pgTable('webhook_deliveries', {
     .defaultNow(),
 });
 
+// ── MFA Settings ───────────────────────────────────────
+// One row per user. Created at enrollment start.
+// isEnabled = false until the user proves the first TOTP code works.
+// encryptedSecret: AES-256-GCM encrypted TOTP seed ("iv:authTag:ciphertext").
+// We encrypt (not hash) because we need the raw secret at verify time.
+export const mfaSettings = pgTable('mfa_settings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  encryptedSecret: varchar('encrypted_secret', { length: 255 }).notNull(),
+  isEnabled: boolean('is_enabled').notNull().default(false),
+  enabledAt: timestamp('enabled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── MFA Recovery Codes ──────────────────────────────────
+// 8 rows per user, created at enrollment.
+// codeHash: SHA-256 of the raw recovery code (high-entropy, no Argon2id needed).
+// Row is deleted on use — single-use is enforced by deletion, not a flag.
+export const mfaRecoveryCodes = pgTable('mfa_recovery_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  codeHash: varchar('code_hash', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Org MFA Policies ────────────────────────────────────
+// One row per org (optional — only created when an org enables MFA enforcement).
+// requireMfa = true blocks org-scoped endpoints for members without MFA enrolled.
+// enforcedAt records when the policy was turned on, for audit purposes.
+export const orgMfaPolicies = pgTable('org_mfa_policies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .unique()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  requireMfa: boolean('require_mfa').notNull().default(false),
+  enforcedAt: timestamp('enforced_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ── Relations (for Drizzle joins) ───────────────────────
 export const organizationsRelations = relations(
   organizations,
@@ -521,3 +583,27 @@ export const webhookDeliveriesRelations = relations(
     }),
   })
 );
+
+export const mfaSettingsRelations = relations(mfaSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [mfaSettings.userId],
+    references: [users.id],
+  }),
+}));
+
+export const mfaRecoveryCodesRelations = relations(
+  mfaRecoveryCodes,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [mfaRecoveryCodes.userId],
+      references: [users.id],
+    }),
+  })
+);
+
+export const orgMfaPoliciesRelations = relations(orgMfaPolicies, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [orgMfaPolicies.orgId],
+    references: [organizations.id],
+  }),
+}));
