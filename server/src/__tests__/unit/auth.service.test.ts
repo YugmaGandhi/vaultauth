@@ -1,4 +1,4 @@
-import { AuthService } from '../../services/auth.service';
+import { AuthService, LoginSuccess } from '../../services/auth.service';
 import { AuthError, ConflictError, ForbiddenError } from '../../utils/errors';
 
 // ── Mock all dependencies ────────────────────────────────
@@ -10,6 +10,10 @@ jest.mock('../../services/password.service');
 jest.mock('../../services/token.service');
 jest.mock('../../services/email.service');
 jest.mock('../../services/rbac.service');
+jest.mock('../../services/mfa.service');
+jest.mock('../../db/redis', () => ({
+  redis: { set: jest.fn(), get: jest.fn(), del: jest.fn() },
+}));
 jest.mock('../../utils/metrics', () => ({
   authEventsTotal: { inc: jest.fn() },
 }));
@@ -22,6 +26,7 @@ import { passwordService } from '../../services/password.service';
 import { tokenService } from '../../services/token.service';
 import { emailService } from '../../services/email.service';
 import { rbacService } from '../../services/rbac.service';
+import { mfaService } from '../../services/mfa.service';
 
 const authService = new AuthService();
 
@@ -38,6 +43,7 @@ const mockPasswordService = passwordService as jest.Mocked<
 const mockTokenService = tokenService as jest.Mocked<typeof tokenService>;
 const mockEmailService = emailService as jest.Mocked<typeof emailService>;
 const mockRbacService = rbacService as jest.Mocked<typeof rbacService>;
+const mockMfaService = mfaService as jest.Mocked<typeof mfaService>;
 
 // ── Shared fixtures ──────────────────────────────────────
 const now = new Date();
@@ -80,6 +86,8 @@ beforeEach(() => {
   );
   mockTokenService.generateAccessToken.mockResolvedValue('mock-access-token');
   mockTokenRepo.create.mockResolvedValue({ id: 'mock-session-id' } as never);
+  // MFA is disabled by default in existing tests — no MFA challenge issued
+  mockMfaService.isMfaEnabled.mockResolvedValue(false);
 });
 
 describe('AuthService', () => {
@@ -186,10 +194,10 @@ describe('AuthService', () => {
       mockUserRepo.resetFailedAttempts.mockResolvedValue(undefined);
       mockUserRepo.updateLastLogin.mockResolvedValue(undefined);
 
-      const result = await authService.login({
+      const result = (await authService.login({
         email: 'test@example.com',
         password: 'StrongPass123!',
-      });
+      })) as LoginSuccess;
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBe('mock-refresh-token');
@@ -238,10 +246,10 @@ describe('AuthService', () => {
       mockUserRepo.resetFailedAttempts.mockResolvedValue(undefined);
       mockUserRepo.updateLastLogin.mockResolvedValue(undefined);
 
-      const result = await authService.login({
+      const result = (await authService.login({
         email: 'test@example.com',
         password: 'StrongPass123!',
-      });
+      })) as LoginSuccess;
 
       // Should reset failed attempts because lockout expired
       expect(mockUserRepo.resetFailedAttempts).toHaveBeenCalledWith(
@@ -646,10 +654,10 @@ describe('AuthService', () => {
       mockUserRepo.findByOAuthId.mockResolvedValue(mockSafeUser);
       mockUserRepo.updateLastLogin.mockResolvedValue(undefined);
 
-      const result = await authService.oauthLogin({
+      const result = (await authService.oauthLogin({
         profile: mockProfile,
         providerName: 'google',
-      });
+      })) as LoginSuccess;
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBe('mock-refresh-token');
@@ -663,10 +671,10 @@ describe('AuthService', () => {
       mockUserRepo.findById.mockResolvedValue(mockSafeUser);
       mockUserRepo.updateLastLogin.mockResolvedValue(undefined);
 
-      const result = await authService.oauthLogin({
+      const result = (await authService.oauthLogin({
         profile: mockProfile,
         providerName: 'google',
-      });
+      })) as LoginSuccess;
 
       expect(mockUserRepo.linkOAuth).toHaveBeenCalledWith(
         mockFullUser.id,
@@ -688,10 +696,10 @@ describe('AuthService', () => {
       mockUserRepo.createOAuthUser.mockResolvedValue(newOAuthUser);
       mockUserRepo.updateLastLogin.mockResolvedValue(undefined);
 
-      const result = await authService.oauthLogin({
+      const result = (await authService.oauthLogin({
         profile: mockProfile,
         providerName: 'google',
-      });
+      })) as LoginSuccess;
 
       expect(mockUserRepo.createOAuthUser).toHaveBeenCalledWith({
         email: 'oauth@example.com',

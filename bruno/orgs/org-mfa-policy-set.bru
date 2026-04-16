@@ -1,0 +1,21 @@
+meta {
+  name: Set Org MFA Policy
+  type: http
+  seq: 14
+}
+
+put {
+  url: {{baseUrl}}/api/orgs/{{orgId}}/mfa-policy
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "requireMfa": true
+  }
+}

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginCallback } from 'fastify';
 import { z } from 'zod';
 import { orgService } from '../services/org.service';
+import { mfaService } from '../services/mfa.service';
 import { isAppError } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import {
@@ -10,6 +11,7 @@ import {
   sendValidationError,
 } from '../utils/response';
 import { authenticate } from '../middleware/authenticate';
+import { authorizeOrgRole, resolveOrgFromParam } from '../middleware/authorize';
 
 const log = createLogger('OrgRoutes');
 
@@ -458,6 +460,107 @@ const orgRoutes: FastifyPluginCallback = (
       throw err;
     }
   });
+
+  // ── GET /api/orgs/:orgId/mfa-policy — Get MFA policy ────
+  // Owner and admin can read the policy.
+  app.get(
+    '/:orgId/mfa-policy',
+    {
+      preHandler: [
+        authenticate,
+        resolveOrgFromParam(),
+        authorizeOrgRole('owner', 'admin'),
+      ],
+    },
+    async (request, reply) => {
+      const parsed = orgIdParamSchema.safeParse(request.params);
+      if (!parsed.success) {
+        return sendValidationError(
+          reply,
+          parsed.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }))
+        );
+      }
+
+      try {
+        const enforced = await mfaService.isOrgMfaEnforced(parsed.data.orgId);
+        return sendSuccess(reply, {
+          orgId: parsed.data.orgId,
+          requireMfa: enforced,
+        });
+      } catch (err) {
+        if (isAppError(err)) {
+          return sendError(reply, err.statusCode, err.code, err.message);
+        }
+        throw err;
+      }
+    }
+  );
+
+  // ── PUT /api/orgs/:orgId/mfa-policy — Set MFA policy ─────
+  // Only org owners can enforce or lift the MFA requirement.
+  app.put(
+    '/:orgId/mfa-policy',
+    {
+      preHandler: [
+        authenticate,
+        resolveOrgFromParam(),
+        authorizeOrgRole('owner'),
+      ],
+    },
+    async (request, reply) => {
+      const paramsParsed = orgIdParamSchema.safeParse(request.params);
+      if (!paramsParsed.success) {
+        return sendValidationError(
+          reply,
+          paramsParsed.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }))
+        );
+      }
+
+      const bodyParsed = z
+        .object({
+          requireMfa: z.boolean({
+            required_error: 'requireMfa (boolean) is required',
+          }),
+        })
+        .safeParse(request.body);
+
+      if (!bodyParsed.success) {
+        return sendValidationError(
+          reply,
+          bodyParsed.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          }))
+        );
+      }
+
+      try {
+        const policy = await mfaService.setOrgMfaPolicy({
+          orgId: paramsParsed.data.orgId,
+          requireMfa: bodyParsed.data.requireMfa,
+          actorUserId: request.user!.id,
+          ipAddress: request.ip,
+        });
+
+        return sendSuccess(reply, { policy });
+      } catch (err) {
+        if (isAppError(err)) {
+          return sendError(reply, err.statusCode, err.code, err.message);
+        }
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error updating org MFA policy'
+        );
+        throw err;
+      }
+    }
+  );
 
   done();
 };

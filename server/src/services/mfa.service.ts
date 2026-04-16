@@ -94,7 +94,9 @@ function generateRecoveryCodes(count: number): {
       '-' +
       crypto.randomBytes(5).toString('hex').toUpperCase();
     raw.push(code);
-    hashes.push(crypto.createHash('sha256').update(code).digest('hex'));
+    // Use the same normalization as hashRecoveryCode so that a user entering
+    // the code with or without the dash always matches the stored hash.
+    hashes.push(hashRecoveryCode(code));
   }
 
   return { raw, hashes };

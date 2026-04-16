@@ -14,6 +14,7 @@ import {
 import { auditRepository } from '../repositories/audit.repository';
 import { adminService } from '../services/admin.service';
 import { deletionService } from '../services/deletion.service';
+import { mfaService } from '../services/mfa.service';
 
 const log = createLogger('AdminRoutes');
 
@@ -333,6 +334,39 @@ export function adminRoutes(
         log.error(
           { err, reqId: request.id },
           'Unexpected error force-deleting user'
+        );
+        throw err;
+      }
+    }
+  );
+
+  // ── DELETE /api/admin/users/:id/mfa — Force-disable MFA ─
+  // Admin bypass — does not require the user's TOTP code.
+  // Used when a user loses access to their authenticator and contacts support.
+  app.delete(
+    '/users/:id/mfa',
+    { preHandler: [authenticate, authorize('write:users')] },
+    async (request, reply) => {
+      const parsed = userIdParamSchema.safeParse(request.params);
+      if (!parsed.success) {
+        return sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid user ID');
+      }
+
+      try {
+        await mfaService.adminDisableMfa({
+          targetUserId: parsed.data.id,
+          adminId: request.user!.id,
+          ipAddress: request.ip,
+        });
+        return sendSuccess(reply, {
+          message: 'MFA disabled for user',
+        });
+      } catch (err) {
+        if (isAppError(err))
+          return sendError(reply, err.statusCode, err.code, err.message);
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error force-disabling MFA'
         );
         throw err;
       }

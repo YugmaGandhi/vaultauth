@@ -1,0 +1,21 @@
+meta {
+  name: MFA Verify Setup (Confirm Enrollment)
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/auth/mfa/verify-setup
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "code": "123456"
+  }
+}

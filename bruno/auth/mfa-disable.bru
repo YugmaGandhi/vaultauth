@@ -1,0 +1,21 @@
+meta {
+  name: MFA Disable
+  type: http
+  seq: 22
+}
+
+delete {
+  url: {{baseUrl}}/auth/mfa
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "code": "123456"
+  }
+}

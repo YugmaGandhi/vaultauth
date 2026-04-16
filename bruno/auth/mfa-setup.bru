@@ -1,0 +1,15 @@
+meta {
+  name: MFA Setup (Start Enrollment)
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{baseUrl}}/auth/mfa/setup
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

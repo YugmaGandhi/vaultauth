@@ -1,0 +1,14 @@
+meta {
+  name: Get Org MFA Policy
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/api/orgs/{{orgId}}/mfa-policy
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

@@ -8,6 +8,7 @@ import { onRequestLogger, onResponseLogger } from './middleware/request-logger';
 import { logger } from './utils/logger';
 import { authRoutes } from './routes/auth.routes';
 import { oauthRoutes } from './routes/oauth.routes';
+import { mfaRoutes } from './routes/mfa.routes';
 import { buildErrorResponse } from './utils/response';
 import { rbacRoutes } from './routes/rbac.routes';
 import { adminRoutes } from './routes/admin.routes';
@@ -168,6 +169,7 @@ export async function buildApp() {
   // Register all auth routes under /auth prefix
   void app.register(authRoutes, { prefix: '/auth' });
   void app.register(oauthRoutes, { prefix: '/auth' });
+  void app.register(mfaRoutes, { prefix: '/auth' });
   void app.register(sessionRoutes, { prefix: '/auth' });
 
   void app.register(rbacRoutes, { prefix: '/api' });

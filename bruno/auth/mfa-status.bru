@@ -1,0 +1,14 @@
+meta {
+  name: MFA Status
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/auth/mfa/status
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

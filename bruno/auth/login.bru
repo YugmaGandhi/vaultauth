@@ -18,10 +18,15 @@ body:json {
 }
 
 script:post-response {
-  // Auto-save tokens after login
   if (res.status === 200) {
-    bru.setVar("accessToken", res.body.data.accessToken);
-    bru.setVar("refreshToken", res.body.data.refreshToken);
-    bru.setVar("sessionId", res.body.data.sessionId);
+    if (res.body.data.mfaRequired) {
+      // MFA challenge — save the short-lived token for the verify step
+      bru.setVar("mfaToken", res.body.data.mfaToken);
+    } else {
+      // No MFA — save real tokens directly
+      bru.setVar("accessToken", res.body.data.accessToken);
+      bru.setVar("refreshToken", res.body.data.refreshToken);
+      bru.setVar("sessionId", res.body.data.sessionId);
+    }
   }
 }

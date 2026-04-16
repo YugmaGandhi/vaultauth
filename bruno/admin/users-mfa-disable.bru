@@ -1,0 +1,14 @@
+meta {
+  name: Admin Force-Disable User MFA
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/mfa
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

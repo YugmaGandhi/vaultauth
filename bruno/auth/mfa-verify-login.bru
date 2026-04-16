@@ -1,0 +1,28 @@
+meta {
+  name: MFA Verify Login (Step 2)
+  type: http
+  seq: 21
+}
+
+post {
+  url: {{baseUrl}}/auth/mfa/verify
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "mfaToken": "{{mfaToken}}",
+    "code": "123456"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    // MFA passed — save real tokens and clear the now-consumed mfaToken
+    bru.setVar("accessToken", res.body.data.accessToken);
+    bru.setVar("refreshToken", res.body.data.refreshToken);
+    bru.setVar("sessionId", res.body.data.sessionId);
+    bru.setVar("mfaToken", "");
+  }
+}
