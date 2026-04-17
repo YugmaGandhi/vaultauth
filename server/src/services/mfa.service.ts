@@ -4,12 +4,7 @@ import { env } from '../config/env';
 import { mfaRepository } from '../repositories/mfa.repository';
 import { auditRepository } from '../repositories/audit.repository';
 import { AuthError, NotFoundError } from '../utils/errors';
-import {
-  SafeMfaSetting,
-  MfaSetting,
-  OrgMfaPolicy,
-  toSafeMfaSetting,
-} from '../utils/types';
+import { SafeMfaSetting, OrgMfaPolicy, toSafeMfaSetting } from '../utils/types';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('MfaService');
@@ -205,7 +200,12 @@ export class MfaService {
 
     // Re-fetch to return the updated row (isEnabled=true, enabledAt set)
     const updated = await mfaRepository.findByUserId(userId);
-    return toSafeMfaSetting(updated as MfaSetting);
+    if (!updated) {
+      throw new Error(
+        `MFA setting disappeared for user ${userId} immediately after enable — this should not happen`
+      );
+    }
+    return toSafeMfaSetting(updated);
   }
 
   // ── Verify Code (login step 2) ────────────────────────

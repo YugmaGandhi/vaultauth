@@ -110,6 +110,18 @@ export const envSchema = z
           'MFA_ENCRYPTION_KEY is set to the insecure default. Generate a real key with `openssl rand -hex 32`.',
       });
     }
+    // Reject matching keys — a shared key means compromising one compromises both.
+    if (
+      env.NODE_ENV === 'production' &&
+      env.MFA_ENCRYPTION_KEY === env.WEBHOOK_SECRET_KEY
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MFA_ENCRYPTION_KEY'],
+        message:
+          'MFA_ENCRYPTION_KEY must not be the same as WEBHOOK_SECRET_KEY. Generate distinct keys with `openssl rand -hex 32`.',
+      });
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;

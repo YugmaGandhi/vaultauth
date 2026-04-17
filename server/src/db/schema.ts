@@ -11,6 +11,7 @@ import {
   primaryKey,
   text,
   uniqueIndex,
+  index,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
@@ -416,16 +417,20 @@ export const mfaSettings = pgTable('mfa_settings', {
 // 8 rows per user, created at enrollment.
 // codeHash: SHA-256 of the raw recovery code (high-entropy, no Argon2id needed).
 // Row is deleted on use — single-use is enforced by deletion, not a flag.
-export const mfaRecoveryCodes = pgTable('mfa_recovery_codes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  codeHash: varchar('code_hash', { length: 255 }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const mfaRecoveryCodes = pgTable(
+  'mfa_recovery_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: varchar('code_hash', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('mfa_recovery_codes_user_id_idx').on(t.userId)]
+);
 
 // ── Org MFA Policies ────────────────────────────────────
 // One row per org (optional — only created when an org enables MFA enforcement).
