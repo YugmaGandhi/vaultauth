@@ -13,6 +13,8 @@ import { OAuthProfile } from '../config/oauth-providers';
 import { rbacService } from './rbac.service';
 import { authEventsTotal } from '../utils/metrics';
 import { webhookService } from './webhook.service';
+import { mfaService } from './mfa.service';
+import { redis } from '../db/redis';
 
 const log = createLogger('AuthService');
 
@@ -41,7 +43,10 @@ type LoginParams = {
   userAgent?: string;
 };
 
-type LoginResult = {
+// Full token result — returned when credentials pass and MFA is not required.
+// Also used by verifyMfaAndLogin() and oauthLogin() when MFA is cleared.
+export type LoginSuccess = {
+  mfaRequired: false;
   sessionId: string;
   accessToken: string;
   refreshToken: string;
@@ -49,6 +54,19 @@ type LoginResult = {
   user: SafeUser & { roles: string[]; permissions: string[] };
   organizations: (Organization & { role: string; joinedAt: Date })[];
 };
+
+// Returned by login() when MFA is enabled — client must complete step 2.
+// mfaToken is a short-lived opaque token (5-min TTL in Redis).
+export type MfaChallengeResult = {
+  mfaRequired: true;
+  mfaToken: string;
+};
+
+// Union of both — what login() and oauthLogin() actually return.
+type LoginResult = LoginSuccess | MfaChallengeResult;
+
+// TTL for the MFA challenge token in Redis (5 minutes)
+const MFA_CHALLENGE_TTL_SECONDS = 300;
 
 export class AuthService {
   // ── Resolve org claims from user's activeOrgId ────────
@@ -231,7 +249,24 @@ export class AuthService {
       );
     }
 
-    // Step 6 — Generate tokens
+    // Step 6 — MFA gate
+    // If MFA is enabled, issue a short-lived challenge token instead of real tokens.
+    // The client must submit this token + a TOTP code to POST /auth/mfa/verify.
+    const mfaEnabled = await mfaService.isMfaEnabled(user.id);
+    if (mfaEnabled) {
+      const rawMfaToken = tokenService.generateRefreshToken(); // 64 random bytes, base64url
+      const mfaTokenHash = tokenService.hashRefreshToken(rawMfaToken);
+      await redis.set(
+        `mfa:challenge:${mfaTokenHash}`,
+        JSON.stringify({ userId: user.id, ipAddress, userAgent }),
+        'EX',
+        MFA_CHALLENGE_TTL_SECONDS
+      );
+      log.info({ userId: user.id }, 'MFA challenge issued');
+      return { mfaRequired: true, mfaToken: rawMfaToken };
+    }
+
+    // Step 7 — Generate tokens
     const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
       user.id
     );
@@ -296,12 +331,134 @@ export class AuthService {
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      mfaRequired: false,
       sessionId: session.id,
       accessToken,
       refreshToken: rawRefreshToken,
       expiresIn,
       user: {
         ...toSafeUser(user),
+        roles: tokenUser.roles,
+        permissions: tokenUser.permissions,
+      },
+      organizations,
+    };
+  }
+
+  // ── Verify MFA and complete login ─────────────────────
+  // Called from POST /auth/mfa/verify.
+  // Validates the mfaToken from Redis, verifies the TOTP/recovery code,
+  // then issues the real access + refresh token pair.
+  async verifyMfaAndLogin(params: {
+    mfaToken: string;
+    code: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<LoginSuccess> {
+    const { mfaToken, code, ipAddress, userAgent } = params;
+
+    // Step 1 — Atomically retrieve and delete the challenge from Redis.
+    // getdel ensures only one concurrent caller gets the value — a plain
+    // get + del leaves a window where two requests can both read the challenge
+    // before either deletes it, breaking the single-use guarantee.
+    const mfaTokenHash = tokenService.hashRefreshToken(mfaToken);
+    const challengeRaw = await redis.getdel(`mfa:challenge:${mfaTokenHash}`);
+
+    if (!challengeRaw) {
+      throw new AuthError(
+        'MFA_TOKEN_EXPIRED',
+        'MFA session expired or invalid. Please log in again.',
+        401
+      );
+    }
+
+    // Step 2 — Parse the challenge (already deleted from Redis above)
+    const challenge = JSON.parse(challengeRaw) as {
+      userId: string;
+      ipAddress?: string;
+      userAgent?: string;
+    };
+
+    // Step 3 — Verify the TOTP or recovery code
+    await mfaService.verifyLoginCode({
+      userId: challenge.userId,
+      code,
+      ipAddress,
+    });
+
+    // Step 4 — Load user for token generation
+    const user = await userRepository.findById(challenge.userId);
+    if (!user) {
+      throw new AuthError('TOKEN_INVALID', 'Invalid authentication token');
+    }
+
+    // Step 5 — Generate real token pair (same as login steps 7-9)
+    const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
+      user.id
+    );
+    const orgContext = await this.resolveOrgContext(user.id, user.activeOrgId);
+
+    const tokenUser: TokenUser = {
+      id: user.id,
+      email: user.email,
+      roles,
+      permissions,
+      ...orgContext,
+    };
+
+    const accessToken = await tokenService.generateAccessToken(tokenUser);
+    const rawRefreshToken = tokenService.generateRefreshToken();
+    const refreshTokenHash = tokenService.hashRefreshToken(rawRefreshToken);
+
+    const session = await tokenRepository.create({
+      userId: user.id,
+      tokenHash: refreshTokenHash,
+      deviceInfo: userAgent,
+      ipAddress,
+      expiresAt: tokenService.getRefreshTokenExpiry(),
+    });
+
+    await userRepository.resetFailedAttempts(user.id);
+    await userRepository.updateLastLogin(user.id);
+
+    await auditRepository.create({
+      userId: user.id,
+      eventType: 'user_login',
+      ipAddress,
+      userAgent,
+      metadata: { email: user.email, mfa: true },
+    });
+
+    authEventsTotal.inc({ event: 'login_success' });
+
+    if (orgContext.orgId) {
+      void webhookService
+        .fanout({
+          eventType: 'user.login',
+          orgId: orgContext.orgId,
+          payload: {
+            userId: user.id,
+            email: user.email,
+            orgId: orgContext.orgId,
+            ipAddress: ipAddress ?? null,
+          },
+        })
+        .catch((err: unknown) => log.error({ err }, 'Webhook fanout failed'));
+    }
+
+    const organizations = await orgRepository.findByUserId(user.id);
+
+    log.info({ userId: user.id }, 'MFA verified — login complete');
+
+    return {
+      mfaRequired: false,
+      sessionId: session.id,
+      accessToken,
+      refreshToken: rawRefreshToken,
+      expiresIn: 900,
+      user: {
+        // findById already returns SafeUser — no need to strip passwordHash again
+        ...user,
         roles: tokenUser.roles,
         permissions: tokenUser.permissions,
       },
@@ -343,7 +500,7 @@ export class AuthService {
     refreshToken: string;
     ipAddress?: string;
     userAgent?: string;
-  }): Promise<Omit<LoginResult, 'user' | 'organizations'>> {
+  }): Promise<Omit<LoginSuccess, 'user' | 'organizations'>> {
     const { refreshToken, ipAddress, userAgent } = params;
 
     log.info('Token refresh attempt');
@@ -417,6 +574,7 @@ export class AuthService {
     log.info({ userId: user.id }, 'Token refresh successful');
 
     return {
+      mfaRequired: false,
       sessionId: newSession.id,
       accessToken: newAccessToken,
       refreshToken: newRawRefreshToken,
@@ -606,7 +764,22 @@ export class AuthService {
       );
     }
 
-    // Step 4 — Generate Griffon tokens
+    // Step 4 — MFA gate (same as password login)
+    const mfaEnabled = await mfaService.isMfaEnabled(user.id);
+    if (mfaEnabled) {
+      const rawMfaToken = tokenService.generateRefreshToken();
+      const mfaTokenHash = tokenService.hashRefreshToken(rawMfaToken);
+      await redis.set(
+        `mfa:challenge:${mfaTokenHash}`,
+        JSON.stringify({ userId: user.id, ipAddress, userAgent }),
+        'EX',
+        MFA_CHALLENGE_TTL_SECONDS
+      );
+      log.info({ userId: user.id }, 'MFA challenge issued after OAuth');
+      return { mfaRequired: true, mfaToken: rawMfaToken };
+    }
+
+    // Step 5 — Generate Griffon tokens
     const { roles, permissions } = await rbacService.getUserRolesAndPermissions(
       user.id
     );
@@ -654,6 +827,7 @@ export class AuthService {
     const organizations = await orgRepository.findByUserId(user.id);
 
     return {
+      mfaRequired: false,
       sessionId: oauthSession.id,
       accessToken,
       refreshToken: rawRefreshToken,

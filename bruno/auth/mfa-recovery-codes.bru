@@ -1,0 +1,21 @@
+meta {
+  name: MFA Regenerate Recovery Codes
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/auth/mfa/recovery-codes
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "code": "123456"
+  }
+}

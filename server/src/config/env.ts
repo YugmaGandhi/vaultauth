@@ -77,6 +77,19 @@ export const envSchema = z
       .default(
         '0000000000000000000000000000000000000000000000000000000000000000'
       ),
+
+    // MFA — 32-byte hex key for AES-256-GCM encryption of TOTP secrets at rest.
+    // Same rules as WEBHOOK_SECRET_KEY: generate with `openssl rand -hex 32`.
+    // Must NOT be the same key as WEBHOOK_SECRET_KEY in production.
+    MFA_ENCRYPTION_KEY: z
+      .string()
+      .regex(
+        /^[0-9a-fA-F]{64}$/,
+        'MFA_ENCRYPTION_KEY must be a 64-char hex string (32 bytes)'
+      )
+      .default(
+        '0000000000000000000000000000000000000000000000000000000000000000'
+      ),
   })
   .superRefine((env, ctx) => {
     // Block the all-zero placeholder in production — the dev default
@@ -87,6 +100,26 @@ export const envSchema = z
         path: ['WEBHOOK_SECRET_KEY'],
         message:
           'WEBHOOK_SECRET_KEY is set to the insecure default. Generate a real key with `openssl rand -hex 32`.',
+      });
+    }
+    if (env.NODE_ENV === 'production' && /^0+$/.test(env.MFA_ENCRYPTION_KEY)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MFA_ENCRYPTION_KEY'],
+        message:
+          'MFA_ENCRYPTION_KEY is set to the insecure default. Generate a real key with `openssl rand -hex 32`.',
+      });
+    }
+    // Reject matching keys — a shared key means compromising one compromises both.
+    if (
+      env.NODE_ENV === 'production' &&
+      env.MFA_ENCRYPTION_KEY === env.WEBHOOK_SECRET_KEY
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MFA_ENCRYPTION_KEY'],
+        message:
+          'MFA_ENCRYPTION_KEY must not be the same as WEBHOOK_SECRET_KEY. Generate distinct keys with `openssl rand -hex 32`.',
       });
     }
   });
