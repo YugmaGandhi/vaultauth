@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { TOTP, Secret } from 'otpauth';
+import qrcode from 'qrcode';
 import { env } from '../config/env';
 import { mfaRepository } from '../repositories/mfa.repository';
 import { auditRepository } from '../repositories/audit.repository';
@@ -118,10 +119,12 @@ export class MfaService {
   //   - secret: manual entry fallback (base32)
   //   - recoveryCodes: show once, user must save them
   // MFA is NOT active yet — verifySetup() must be called to confirm.
-  async setupMfa(params: {
-    userId: string;
-    userEmail: string;
-  }): Promise<{ otpauthUri: string; secret: string; recoveryCodes: string[] }> {
+  async setupMfa(params: { userId: string; userEmail: string }): Promise<{
+    otpauthUri: string;
+    secret: string;
+    qrCodeDataUrl: string;
+    recoveryCodes: string[];
+  }> {
     const { userId, userEmail } = params;
 
     log.info({ userId }, 'Starting MFA setup');
@@ -133,6 +136,11 @@ export class MfaService {
     // Build the TOTP instance to get the otpauth:// URI for QR codes
     const totp = buildTotp(base32Secret, userEmail);
     const otpauthUri = totp.toString();
+
+    // Generate a QR code as a base64 PNG data URL — rendered by the frontend
+    // as <img src="..."> so the user can scan it with their authenticator app.
+    // Generated entirely server-side; the secret never leaves to a third party.
+    const qrCodeDataUrl = await qrcode.toDataURL(otpauthUri);
 
     // Encrypt the base32 secret for storage
     const encryptedSecret = encryptSecret(base32Secret);
@@ -148,7 +156,7 @@ export class MfaService {
 
     log.info({ userId }, 'MFA setup initiated — awaiting verification');
 
-    return { otpauthUri, secret: base32Secret, recoveryCodes };
+    return { otpauthUri, secret: base32Secret, qrCodeDataUrl, recoveryCodes };
   }
 
   // ── Verify Setup ──────────────────────────────────────

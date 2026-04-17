@@ -80,7 +80,12 @@ describe('MFA Routes', () => {
       headers: { authorization: `Bearer ${accessToken}` },
     });
     const { secret } = setupRes.json<{
-      data: { secret: string; otpauthUri: string; recoveryCodes: string[] };
+      data: {
+        secret: string;
+        otpauthUri: string;
+        qrCodeDataUrl: string;
+        recoveryCodes: string[];
+      };
     }>().data;
 
     const code = generateTotpCode(secret);
@@ -115,10 +120,16 @@ describe('MFA Routes', () => {
 
       expect(res.statusCode).toBe(201);
       const body = res.json<{
-        data: { otpauthUri: string; secret: string; recoveryCodes: string[] };
+        data: {
+          otpauthUri: string;
+          secret: string;
+          qrCodeDataUrl: string;
+          recoveryCodes: string[];
+        };
       }>();
       expect(body.data.otpauthUri).toMatch(/^otpauth:\/\/totp\//);
       expect(typeof body.data.secret).toBe('string');
+      expect(body.data.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
       expect(body.data.recoveryCodes).toHaveLength(8);
       body.data.recoveryCodes.forEach((code) => {
         expect(code).toMatch(/^[0-9A-F]{10}-[0-9A-F]{10}$/);
