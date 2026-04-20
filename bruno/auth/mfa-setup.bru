@@ -1,0 +1,25 @@
+meta {
+  name: MFA Setup (Start Enrollment)
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{baseUrl}}/auth/mfa/setup
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("totpSecret", res.body.data.secret);
+    bru.setVar("otpauthUri", res.body.data.otpauthUri);
+    // qrCodeDataUrl is a data:image/png;base64,... string —
+    // paste it into your browser address bar to view the QR code for scanning.
+    bru.setVar("qrCodeDataUrl", res.body.data.qrCodeDataUrl);
+  }
+}

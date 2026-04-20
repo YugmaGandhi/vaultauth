@@ -134,7 +134,22 @@ export function oauthRoutes(
         userAgent: request.headers['user-agent'],
       });
 
-      // Redirect with Griffon tokens
+      // MFA required — redirect to frontend MFA step with a short-lived token
+      if (result.mfaRequired) {
+        const redirectParams = new URLSearchParams({
+          mfaRequired: 'true',
+          mfaToken: result.mfaToken,
+        });
+        log.info(
+          { provider },
+          'MFA required after OAuth — redirecting to MFA step'
+        );
+        return reply.redirect(
+          `${env.OAUTH_SUCCESS_REDIRECT}?${redirectParams.toString()}`
+        );
+      }
+
+      // No MFA — redirect with real tokens
       const redirectParams = new URLSearchParams({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,

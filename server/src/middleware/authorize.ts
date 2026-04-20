@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { sendError, sendForbidden } from '../utils/response';
+import { mfaService } from '../services/mfa.service';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('AuthorizeMiddleware');
@@ -150,6 +151,41 @@ export function authorizeOrgRole(...allowedRoles: string[]) {
         reply,
         'FORBIDDEN',
         'You do not have the required role in this organization'
+      );
+    }
+  };
+}
+
+// Blocks org-scoped requests when the org enforces MFA but the user has not enrolled.
+// Must come after authenticate + requireOrg() in the preHandler chain so req.user
+// and req.user.orgId are guaranteed to be set.
+// Super-admins bypass this check — they always satisfy any org policy.
+export function requireMfaIfEnforced() {
+  return async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<void> => {
+    const user = request.user;
+
+    if (!user || !user.orgId) return; // Guard — prior middleware ensures these exist
+
+    // Super-admins can always access org endpoints regardless of MFA policy
+    if (user.roles.includes('super-admin')) return;
+
+    const satisfies = await mfaService.userSatisfiesOrgMfaPolicy(
+      user.id,
+      user.orgId
+    );
+
+    if (!satisfies) {
+      log.warn(
+        { userId: user.id, orgId: user.orgId },
+        'Org MFA policy not satisfied — blocking request'
+      );
+      return sendForbidden(
+        reply,
+        'MFA_REQUIRED',
+        'This organization requires MFA. Please enroll at POST /auth/mfa/setup.'
       );
     }
   };
