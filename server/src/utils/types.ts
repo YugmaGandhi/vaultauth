@@ -15,6 +15,7 @@ import {
   mfaSettings,
   mfaRecoveryCodes,
   orgMfaPolicies,
+  apiKeys,
 } from '../db/schema';
 
 // Infer types directly from Drizzle schema
@@ -37,6 +38,8 @@ export type WebhookDelivery = InferSelectModel<typeof webhookDeliveries>;
 export type MfaSetting = InferSelectModel<typeof mfaSettings>;
 export type MfaRecoveryCode = InferSelectModel<typeof mfaRecoveryCodes>;
 export type OrgMfaPolicy = InferSelectModel<typeof orgMfaPolicies>;
+// API Keys
+export type ApiKey = InferSelectModel<typeof apiKeys>;
 
 // Safe shape for API responses — secretHash must never be sent to clients,
 // same rule as passwordHash on User.
@@ -54,6 +57,19 @@ export function toSafeWebhookEndpoint(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { secretHash, events, ...rest } = endpoint;
   return { ...rest, events: (events as string[]) ?? [] };
+}
+
+// API key shape safe to return in API responses.
+// keyHash is SHA-256 of the full key — must never leave the server.
+// permissions cast to string[] because Drizzle types jsonb as unknown.
+export type SafeApiKey = Omit<ApiKey, 'keyHash' | 'permissions'> & {
+  permissions: string[];
+};
+
+export function toSafeApiKey(key: ApiKey): SafeApiKey {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { keyHash, permissions, ...rest } = key;
+  return { ...rest, permissions: (permissions as string[]) ?? [] };
 }
 
 // MFA setting shape safe to return in API responses.
