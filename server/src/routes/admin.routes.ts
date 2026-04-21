@@ -15,6 +15,7 @@ import { auditRepository } from '../repositories/audit.repository';
 import { adminService } from '../services/admin.service';
 import { deletionService } from '../services/deletion.service';
 import { mfaService } from '../services/mfa.service';
+import { apiKeyService } from '../services/api-key.service';
 
 const log = createLogger('AdminRoutes');
 
@@ -367,6 +368,66 @@ export function adminRoutes(
         log.error(
           { err, reqId: request.id },
           'Unexpected error force-disabling MFA'
+        );
+        throw err;
+      }
+    }
+  );
+
+  // ── GET /api/admin/users/:id/api-keys — List user's keys ─
+  app.get(
+    '/users/:id/api-keys',
+    { preHandler: [authenticate, authorize('read:users')] },
+    async (request, reply) => {
+      const parsed = userIdParamSchema.safeParse(request.params);
+      if (!parsed.success) {
+        return sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid user ID');
+      }
+
+      try {
+        const keys = await apiKeyService.adminListKeys(parsed.data.id);
+        return sendSuccess(reply, { keys });
+      } catch (err) {
+        if (isAppError(err))
+          return sendError(reply, err.statusCode, err.code, err.message);
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error listing user API keys'
+        );
+        throw err;
+      }
+    }
+  );
+
+  // ── DELETE /api/admin/users/:id/api-keys/:keyId — Revoke ─
+  // Admin bypass — no ownership check, no MFA gate.
+  const adminKeyParamSchema = z.object({
+    id: z.string().uuid('Invalid user ID'),
+    keyId: z.string().uuid('Invalid API key ID'),
+  });
+
+  app.delete(
+    '/users/:id/api-keys/:keyId',
+    { preHandler: [authenticate, authorize('write:users')] },
+    async (request, reply) => {
+      const parsed = adminKeyParamSchema.safeParse(request.params);
+      if (!parsed.success) {
+        return sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid parameters');
+      }
+
+      try {
+        await apiKeyService.adminRevokeKey({
+          keyId: parsed.data.keyId,
+          adminId: request.user!.id,
+          ipAddress: request.ip,
+        });
+        return sendSuccess(reply, { message: 'API key revoked' });
+      } catch (err) {
+        if (isAppError(err))
+          return sendError(reply, err.statusCode, err.code, err.message);
+        log.error(
+          { err, reqId: request.id },
+          'Unexpected error revoking user API key'
         );
         throw err;
       }
