@@ -1,0 +1,15 @@
+meta {
+  name: Admin Revoke User API Key
+  type: http
+  seq: 13
+}
+
+delete {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/api-keys/{{apiKeyId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

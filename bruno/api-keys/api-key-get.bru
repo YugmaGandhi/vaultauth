@@ -1,0 +1,14 @@
+meta {
+  name: Get API Key
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/api-keys/{{apiKeyId}}
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

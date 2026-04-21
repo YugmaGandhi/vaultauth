@@ -1,0 +1,32 @@
+meta {
+  name: Create API Key
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/api-keys
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "name": "CI Pipeline",
+    "permissions": ["read:profile"],
+    "expiresAt": null,
+    "orgId": null,
+    "totpCode": ""
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("apiKeyId", res.body.data.key.id);
+    bru.setVar("apiKeyPlaintext", res.body.data.plaintext);
+  }
+}
