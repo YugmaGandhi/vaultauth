@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { tokenService } from '../services/token.service';
 import { apiKeyService } from '../services/api-key.service';
 import { apiKeyRepository } from '../repositories/api-key.repository';
+import { auditRepository } from '../repositories/audit.repository';
 import { sendUnauthorized } from '../utils/response';
 import { createLogger } from '../utils/logger';
 import { redis } from '../db/redis';
@@ -78,6 +79,12 @@ export async function authenticate(
 
       // Fire-and-forget — updateLastUsed has internal error handling.
       void apiKeyRepository.updateLastUsed(result.keyId);
+      void auditRepository.create({
+        userId: result.userId,
+        eventType: 'api_key_used',
+        ipAddress: request.ip,
+        metadata: { keyId: result.keyId },
+      });
     } catch (err) {
       log.debug({ reqId: request.id, err }, 'API key authentication failed');
       return sendUnauthorized(reply, 'API_KEY_INVALID', 'Invalid API key.');
