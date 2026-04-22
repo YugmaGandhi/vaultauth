@@ -7,6 +7,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.0] — 2026-04-21
+
+### Added
+
+**API Key Management**
+
+- `POST /api/api-keys` — create a named API key with explicit permissions; returns plaintext key once, never stored
+- `GET /api/api-keys` — list all active (non-revoked) keys for the authenticated user; `keyHash` never included in any response
+- `GET /api/api-keys/:id` — get single key metadata with ownership enforcement
+- `DELETE /api/api-keys/:id` — revoke a key; accepts optional `totpCode` in body for MFA-enrolled users
+- `GET /api/admin/users/:id/api-keys` — admin: list any user's API keys without ownership check
+- `DELETE /api/admin/users/:id/api-keys/:keyId` — admin: revoke any user's key without ownership check or MFA gate
+- API key authentication in `authenticate` middleware — `Bearer grf_live_*` tokens are detected, SHA-256 hashed, looked up, and validated; `lastUsedAt` updated in background (fire-and-forget)
+- New env var: `MAX_API_KEYS_PER_USER` (default: `10`) — limits active keys per user
+- Bruno collection: 4 new request files (`api-key-create`, `api-key-list`, `api-key-get`, `api-key-revoke`) + 2 admin files
+
+**Security**
+
+- API keys stored as SHA-256 hash only — plaintext is never persisted
+- `grf_live_` prefix enables identification in logs and secret scanners
+- MFA gate: key creation and revocation require a valid TOTP code when MFA is enrolled
+- Key permissions are frozen at creation — authenticating with a key never grants more than the specified scope
+- Disabled user blocklist check applies to API key auth path (same as JWT path)
+
+---
+
 ## [0.3.0] — 2026-04-17
 
 ### Added

@@ -23,6 +23,7 @@ Griffon is a production-grade authentication service you deploy yourself. It giv
 
 - **Email + password auth** with Argon2id hashing
 - **OAuth2** — Google, GitHub, Microsoft (extensible to any provider)
+- **API Keys** — machine-to-machine auth for scripts, CI pipelines, and backend services; scoped permissions, optional expiry, MFA-gated creation
 - **MFA** — TOTP-based two-factor authentication with QR code enrollment, recovery codes, and org-level enforcement
 - **JWT** with RS256 signing and automatic refresh token rotation
 - **RBAC** — roles and permissions embedded in tokens
@@ -153,6 +154,17 @@ Server runs at `http://localhost:3000`. Visit `http://localhost:3000/health` to 
 | GET | `/api/orgs/:orgId/invitations` | List pending invitations |
 | DELETE | `/api/orgs/:orgId/invitations/:id` | Revoke invitation |
 | PATCH | `/api/orgs/:orgId/transfer-ownership` | Transfer ownership |
+
+### API Keys
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/api-keys` | Create API key — returns plaintext once, never stored |
+| GET | `/api/api-keys` | List active keys (keyHash never returned) |
+| GET | `/api/api-keys/:id` | Get single key metadata |
+| DELETE | `/api/api-keys/:id` | Revoke a key (requires TOTP if MFA enabled) |
+| GET | `/api/admin/users/:id/api-keys` | Admin: list any user's keys |
+| DELETE | `/api/admin/users/:id/api-keys/:keyId` | Admin: revoke any user's key (no MFA gate) |
 
 ### OAuth
 
