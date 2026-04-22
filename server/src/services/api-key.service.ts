@@ -64,6 +64,7 @@ export class ApiKeyService {
   // Plaintext is never stored; loss requires creating a new key.
   async createKey(params: {
     userId: string;
+    callerPermissions: string[];
     orgId?: string | null;
     name: string;
     permissions: string[];
@@ -71,14 +72,31 @@ export class ApiKeyService {
     totpCode?: string;
     ipAddress?: string;
   }): Promise<{ key: SafeApiKey; plaintext: string }> {
-    const { userId, orgId, name, permissions, expiresAt, totpCode, ipAddress } =
-      params;
+    const {
+      userId,
+      callerPermissions,
+      orgId,
+      name,
+      permissions,
+      expiresAt,
+      totpCode,
+      ipAddress,
+    } = params;
 
     if (permissions.length === 0) {
       throw new AuthError(
         'PERMISSIONS_REQUIRED',
         'At least one permission must be specified.',
         400
+      );
+    }
+
+    const callerPermSet = new Set(callerPermissions);
+    const disallowed = permissions.filter((p) => !callerPermSet.has(p));
+    if (disallowed.length > 0) {
+      throw new ForbiddenError(
+        'PERMISSION_ESCALATION',
+        `You cannot grant permissions you do not hold: ${disallowed.join(', ')}`
       );
     }
 

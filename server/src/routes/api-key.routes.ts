@@ -60,6 +60,7 @@ export function apiKeyRoutes(
     try {
       const { key, plaintext } = await apiKeyService.createKey({
         userId: request.user!.id,
+        callerPermissions: request.user!.permissions,
         orgId: parsed.data.orgId ?? null,
         name: parsed.data.name,
         permissions: parsed.data.permissions,

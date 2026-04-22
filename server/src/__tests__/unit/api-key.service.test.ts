@@ -115,8 +115,24 @@ describe('ApiKeyService', () => {
   describe('createKey()', () => {
     it('should throw when permissions array is empty', async () => {
       await expect(
-        service.createKey({ userId, name: 'Key', permissions: [] })
+        service.createKey({
+          userId,
+          callerPermissions: [],
+          name: 'Key',
+          permissions: [],
+        })
       ).rejects.toThrow(AuthError);
+    });
+
+    it('should throw PERMISSION_ESCALATION when requesting permissions the caller does not hold', async () => {
+      await expect(
+        service.createKey({
+          userId,
+          callerPermissions: ['read:profile'],
+          name: 'Key',
+          permissions: ['read:profile', 'write:users'],
+        })
+      ).rejects.toMatchObject({ code: 'PERMISSION_ESCALATION' });
     });
 
     it('should throw MFA_REQUIRED when user has MFA enabled but no totpCode', async () => {
@@ -125,6 +141,7 @@ describe('ApiKeyService', () => {
       await expect(
         service.createKey({
           userId,
+          callerPermissions: ['read:profile'],
           name: 'Key',
           permissions: ['read:profile'],
         })
@@ -139,6 +156,7 @@ describe('ApiKeyService', () => {
 
       await service.createKey({
         userId,
+        callerPermissions: ['read:profile'],
         name: 'Key',
         permissions: ['read:profile'],
         totpCode: '123456',
@@ -157,6 +175,7 @@ describe('ApiKeyService', () => {
       await expect(
         service.createKey({
           userId,
+          callerPermissions: ['read:profile'],
           name: 'Key',
           permissions: ['read:profile'],
         })
@@ -169,6 +188,7 @@ describe('ApiKeyService', () => {
 
       const result = await service.createKey({
         userId,
+        callerPermissions: ['read:profile'],
         name: 'CI Pipeline',
         permissions: ['read:profile'],
       });
@@ -192,6 +212,7 @@ describe('ApiKeyService', () => {
 
       await service.createKey({
         userId,
+        callerPermissions: ['read:profile'],
         name: 'Key',
         permissions: ['read:profile'],
       });
