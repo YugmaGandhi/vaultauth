@@ -1,0 +1,14 @@
+meta {
+  name: Admin List User API Keys
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/api/admin/users/{{userId}}/api-keys
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}

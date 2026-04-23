@@ -1,0 +1,21 @@
+meta {
+  name: Revoke API Key
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/api-keys/{{apiKeyId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+body:json {
+  {
+    "totpCode": ""
+  }
+}

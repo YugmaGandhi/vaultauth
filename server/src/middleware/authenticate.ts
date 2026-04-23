@@ -1,5 +1,8 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { tokenService } from '../services/token.service';
+import { apiKeyService } from '../services/api-key.service';
+import { apiKeyRepository } from '../repositories/api-key.repository';
+import { auditRepository } from '../repositories/audit.repository';
 import { sendUnauthorized } from '../utils/response';
 import { createLogger } from '../utils/logger';
 import { redis } from '../db/redis';
@@ -18,6 +21,10 @@ declare module 'fastify' {
       orgId: string | null;
       orgRole: string | null;
       orgPermissions: string[];
+      // Tracks how the caller authenticated on this request.
+      // Used by requireInteractiveAuth to block API-key principals from
+      // privileged planes (e.g. key management).
+      authMethod: 'jwt' | 'api_key';
     };
   }
 }
@@ -35,6 +42,58 @@ export async function authenticate(
 
   const token = authHeader.slice(7); // Remove 'Bearer ' prefix
 
+  // ── API key path ──────────────────────────────────────
+  // Detected by the grf_live_ prefix on the token value, not the header.
+  if (token.startsWith('grf_live_')) {
+    try {
+      const result = await apiKeyService.authenticateByKey(token);
+
+      // Same disabled-user check as the JWT path — fail open if Redis is down.
+      try {
+        const isBlocked = await redis.exists(`blocklist:user:${result.userId}`);
+        if (isBlocked) {
+          return sendUnauthorized(
+            reply,
+            'USER_DISABLED',
+            'Your account has been disabled. Please contact support.'
+          );
+        }
+      } catch {
+        log.warn(
+          { userId: result.userId },
+          'Redis blocklist check failed — failing open'
+        );
+      }
+
+      // Keys carry frozen permissions only — no live roles or org role.
+      request.user = {
+        id: result.userId,
+        email: result.email,
+        roles: [],
+        permissions: result.permissions,
+        orgId: result.orgId,
+        orgRole: null,
+        orgPermissions: [],
+        authMethod: 'api_key',
+      };
+
+      // Fire-and-forget — updateLastUsed has internal error handling.
+      void apiKeyRepository.updateLastUsed(result.keyId);
+      void auditRepository.create({
+        userId: result.userId,
+        eventType: 'api_key_used',
+        ipAddress: request.ip,
+        metadata: { keyId: result.keyId },
+      });
+    } catch (err) {
+      log.debug({ reqId: request.id, err }, 'API key authentication failed');
+      return sendUnauthorized(reply, 'API_KEY_INVALID', 'Invalid API key.');
+    }
+
+    return;
+  }
+
+  // ── JWT path ──────────────────────────────────────────
   try {
     const payload = await tokenService.verifyAccessToken(token);
 
@@ -65,6 +124,7 @@ export async function authenticate(
       orgId: payload.orgId ?? null,
       orgRole: payload.orgRole ?? null,
       orgPermissions: payload.orgPermissions ?? [],
+      authMethod: 'jwt',
     };
   } catch (err) {
     log.debug({ reqId: request.id, err }, 'Token verification failed');
