@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { sendForbidden } from '../utils/response';
+import { sendForbidden, sendUnauthorized } from '../utils/response';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('RequireInteractiveAuth');
@@ -15,7 +15,7 @@ export async function requireInteractiveAuth(
   const user = request.user;
 
   if (!user) {
-    return sendForbidden(reply, 'FORBIDDEN', 'Authentication required');
+    return sendUnauthorized(reply, 'UNAUTHORIZED', 'Authentication required');
   }
 
   if (user.authMethod === 'api_key') {
