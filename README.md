@@ -10,8 +10,7 @@
     <a href="https://github.com/YugmaGandhi/griffon/blob/main/LICENSE">
       <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
     </a>
-    <img src="https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen" alt="Node 24+" />
-    <img src="https://img.shields.io/badge/TypeScript-strict-blue" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen" alt="Node 20+" />    <img src="https://img.shields.io/badge/TypeScript-strict-blue" alt="TypeScript" />
   </p>
 </div>
 
