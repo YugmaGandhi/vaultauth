@@ -66,6 +66,17 @@ Tokens are signed with **RS256** (asymmetric RSA):
 - TOTP window: ±1 step (30s each) to tolerate clock drift — valid for up to 90 seconds
 - Org enforcement: owners can require MFA for all members, enforced at middleware level; super-admins bypass
 
+### API Keys
+- Key format: `grf_live_` prefix + 43 cryptographically random base64url characters (52 chars total)
+- `grf_live_` prefix makes keys easy to identify in logs, secret scanners, and rotation scripts
+- Only the **SHA-256 hash** is stored — the plaintext is returned once at creation and never persisted
+- Keys carry explicit permission strings frozen at creation — authenticating with a key never grants more than what was specified
+- Optional expiry: keys without an expiry live until explicitly revoked
+- **MFA gate**: if the key owner has MFA enrolled, creating or revoking a key requires a valid TOTP code
+- Every authenticated request checks the Redis blocklist (`blocklist:user:{id}`) — disabled users are rejected even with a valid key
+- `MAX_API_KEYS_PER_USER` (default 10) caps the number of active keys per user to limit blast radius from a compromised account
+- Every create and revoke event is written to the audit log with `userId`, key prefix, and (for admin revokes) `revokedBy: admin`
+
 ### Webhook Signing
 - Every delivery includes `X-Griffon-Signature: sha256=<hmac-sha256-hex>`
 - HMAC key is the endpoint's signing secret (32 cryptographically random bytes)
