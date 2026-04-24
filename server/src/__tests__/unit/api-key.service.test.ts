@@ -4,7 +4,12 @@ import { userRepository } from '../../repositories/user.repository';
 import { auditRepository } from '../../repositories/audit.repository';
 import { mfaRepository } from '../../repositories/mfa.repository';
 import { mfaService } from '../../services/mfa.service';
-import { AuthError, ForbiddenError, NotFoundError } from '../../utils/errors';
+import {
+  AuthError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../utils/errors';
 import type { ApiKey, SafeUser, MfaSetting } from '../../utils/types';
 
 // ── Mocks ─────────────────────────────────────────────────
@@ -151,8 +156,7 @@ describe('ApiKeyService', () => {
     it('should call assertTotpCode when user has MFA and totpCode is provided', async () => {
       mockMfaRepo.findByUserId.mockResolvedValue(enabledMfaSetting);
       mockMfaService.assertTotpCode.mockResolvedValue();
-      mockApiKeyRepo.countByUserId.mockResolvedValue(0);
-      mockApiKeyRepo.create.mockResolvedValue(activeKey);
+      mockApiKeyRepo.createWithLimitCheck.mockResolvedValue(activeKey);
 
       await service.createKey({
         userId,
@@ -170,7 +174,9 @@ describe('ApiKeyService', () => {
     });
 
     it('should throw API_KEY_LIMIT_REACHED when user is at the limit', async () => {
-      mockApiKeyRepo.countByUserId.mockResolvedValue(10);
+      mockApiKeyRepo.createWithLimitCheck.mockRejectedValue(
+        new ConflictError('API_KEY_LIMIT_REACHED', 'Active key limit reached.')
+      );
 
       await expect(
         service.createKey({
@@ -183,8 +189,7 @@ describe('ApiKeyService', () => {
     });
 
     it('should return plaintext key and SafeApiKey on success', async () => {
-      mockApiKeyRepo.countByUserId.mockResolvedValue(0);
-      mockApiKeyRepo.create.mockResolvedValue(activeKey);
+      mockApiKeyRepo.createWithLimitCheck.mockResolvedValue(activeKey);
 
       const result = await service.createKey({
         userId,
@@ -201,14 +206,13 @@ describe('ApiKeyService', () => {
       expect(result.key.name).toBe('CI Pipeline');
 
       // Repository was called with hashed key, not plaintext
-      const createCall = mockApiKeyRepo.create.mock.calls[0][0];
+      const createCall = mockApiKeyRepo.createWithLimitCheck.mock.calls[0][0];
       expect(createCall.keyHash).not.toBe(result.plaintext);
-      expect(createCall.prefix).toBe(result.plaintext.slice(0, 10));
+      expect(createCall.prefix).toBe(result.plaintext.slice(0, 16));
     });
 
     it('should write an audit log after creation', async () => {
-      mockApiKeyRepo.countByUserId.mockResolvedValue(0);
-      mockApiKeyRepo.create.mockResolvedValue(activeKey);
+      mockApiKeyRepo.createWithLimitCheck.mockResolvedValue(activeKey);
 
       await service.createKey({
         userId,

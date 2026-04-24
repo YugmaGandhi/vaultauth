@@ -140,7 +140,7 @@ describe('API Key Routes', () => {
       expect(plaintext).toMatch(/^grf_live_[A-Za-z0-9_-]{43}$/);
 
       // Prefix is first 10 chars of the key
-      expect(key.prefix).toBe(plaintext.slice(0, 10));
+      expect(key.prefix).toBe(plaintext.slice(0, 16));
 
       // keyHash must NEVER appear in the response
       expect(key.keyHash).toBeUndefined();

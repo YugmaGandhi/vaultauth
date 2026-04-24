@@ -26,10 +26,20 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 **Security**
 
 - API keys stored as SHA-256 hash only — plaintext is never persisted
-- `grf_live_` prefix enables identification in logs and secret scanners
+- `grf_live_` prefix (16 chars: 9 constant + 7 random) enables reliable identification in logs and secret scanners
 - MFA gate: key creation and revocation require a valid TOTP code when MFA is enrolled
+- Permission escalation prevented at creation — requested permissions validated against the caller's effective grants; rejected with `403 PERMISSION_ESCALATION` if any requested scope exceeds what the caller holds
 - Key permissions are frozen at creation — authenticating with a key never grants more than the specified scope
+- `requireInteractiveAuth` middleware — API-key credentials are blocked from all key-management routes (create, list, get, revoke, and admin equivalents); prevents machine credentials from self-replicating
+- `api_key_used` audit event written on every successful key authentication (fire-and-forget, alongside `lastUsedAt` update) — key usage is fully visible in the audit trail
+- Admin revoke route (`DELETE /api/admin/users/:id/api-keys/:keyId`) validates the key belongs to the target user in the URL, not any arbitrary key
 - Disabled user blocklist check applies to API key auth path (same as JWT path)
+
+### Fixed
+
+- `MAX_API_KEYS_PER_USER` cap enforced via PostgreSQL advisory lock (`createWithLimitCheck`) — eliminates TOCTOU race where concurrent requests could exceed the limit
+- Expired keys excluded from `findByUserId()` — now consistent with the `countByUserId()` predicate used for cap enforcement
+- `requireInteractiveAuth` returns `401` (not `403`) when the requesting user is absent
 
 ---
 
